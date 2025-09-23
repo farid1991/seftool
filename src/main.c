@@ -293,7 +293,7 @@ static void print_usage(const char *progname)
     printf("  -a, --action <action>   Action:\n");
     printf("                          identify\n");
     printf("                          flash <main> xor <fs>\n");
-    printf("                          read-flash <addr> <size>\n");
+    printf("                          start <addr> size <bytes> OR block <count>\n");
     printf("                          read-gdfs\n");
     printf("                          write-gdfs <filename>\n");
     printf("                          unlock <usercode|simlock>\n");
@@ -364,14 +364,34 @@ int main(int argc, char **argv)
             // handle read-flash extra args right after '-a read-flash'
             else if (strcmp(action, "read-flash") == 0)
             {
-                if (i + 2 < argc)
+                // expect keywords: start <addr> size <bytes> OR block <count>
+                while (i + 1 < argc && argv[i + 1][0] != '-')
                 {
-                    dump_addr = strtoul(argv[++i], NULL, 0); // allow hex 0x..
-                    dump_size = strtoul(argv[++i], NULL, 0);
+                    const char *arg = argv[++i];
+
+                    if (strcmp(arg, "start") == 0 && i + 1 < argc)
+                    {
+                        dump_addr = strtoul(argv[++i], NULL, 0);
+                    }
+                    else if (strcmp(arg, "size") == 0 && i + 1 < argc)
+                    {
+                        dump_size = strtoul(argv[++i], NULL, 0);
+                    }
+                    else if (strcmp(arg, "block") == 0 && i + 1 < argc)
+                    {
+                        int blocks = atoi(argv[++i]);
+                        dump_size = blocks * BLOCK_SIZE;
+                    }
+                    else
+                    {
+                        fprintf(stderr, "Error: read-flash requires start <addr> and (size <bytes> | block <count>)\n");
+                        return 1;
+                    }
                 }
-                else
+
+                if (dump_addr == 0 || dump_size == 0)
                 {
-                    fprintf(stderr, "Error: read-flash requires <addr> <size>\n");
+                    fprintf(stderr, "Error: read-flash requires start <addr> and (size <bytes> | block <count>)\n");
                     return 1;
                 }
             }
@@ -447,13 +467,22 @@ int main(int argc, char **argv)
 
     printf("Port: %s\n", port_name);
     printf("Baudrate: %d\n", baudrate);
-    printf("Action: %s", action);
+    printf("Action: %s ", action);
     if (strcmp(action, "read-flash") == 0)
-        printf(" addr: 0x%X, size: %u bytes\n", dump_addr, dump_size);
+    {
+        // round up size to nearest multiple of BLOCK_SIZE
+        if (dump_size % BLOCK_SIZE != 0)
+        {
+            int aligned_size = (dump_size + BLOCK_SIZE - 1) & ~(BLOCK_SIZE - 1);
+            printf("\nsize 0x%X adjusted to aligned size 0x%X\n", dump_size, aligned_size);
+            dump_size = aligned_size;
+        }
+        printf("addr: 0x%X, size: 0x%X (%u) bytes\n", dump_addr, dump_size, dump_size);
+    }
     else if (strcmp(action, "unlock") == 0)
-        printf(" %s\n", unlock_target);
+        printf("%s\n", unlock_target);
     else if (strcmp(action, "write-gdfs") == 0)
-        printf(" %s\n", gdfs_filename);
+        printf("%s\n", gdfs_filename);
     else
         printf("\n");
 

@@ -48,7 +48,7 @@ int flash_read(struct sp_port *port, struct phone_info *phone,
     snprintf(outfile, sizeof(outfile),
              "./backup/flashdump_%s_%08X_%08X.bin",
              phone->otp_imei,
-             addr_range[0], addr_range[1]);
+             addr_range[0], size);
 
     FILE *out = fopen(outfile, "wb");
     if (!out)
@@ -192,7 +192,180 @@ int flash_read(struct sp_port *port, struct phone_info *phone,
 #define FLASH_OK 0
 #define FLASH_ERROR -1
 
-int flash_babe(struct sp_port *port, const char *filename, int flashfull)
+int flash_babe(struct sp_port *port, uint8_t *addr, long size, int flashfull)
+{
+    struct babehdr_t *hdr = (struct babehdr_t *)addr;
+    int fileformatver = hdr->ver;
+    int hashsize = fileformatver >= 4 ? 20 : 1;
+    int blocks = hdr->payloadsize1;
+    int hdrsize = (fileformatver <= 2) ? 0x480 : blocks * hashsize + 0x380;
+
+    // --- send header ---
+    int curpos = 0;
+    while (curpos < hdrsize)
+    {
+        int chunk = hdrsize - curpos;
+        if (chunk > 0x800)
+            chunk = 0x800;
+
+        uint8_t cmd_buf[0x1000];
+        int cmd_len = cmd_encode_binary_packet(0x0E, addr + curpos, chunk, cmd_buf);
+        if (cmd_len <= 0)
+            return FLASH_ERROR;
+
+        if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
+            return FLASH_ERROR;
+
+        uint8_t resp[7];
+        int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 5 * TIMEOUT);
+        if (rcv_len <= 0)
+            return FLASH_ERROR;
+
+        struct packetdata_t repl;
+        if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
+            return FLASH_ERROR;
+
+        if (repl.cmd != 0x0F || repl.length != 1 || repl.data[0] != 0x00)
+        {
+            printf("send header error\n");
+            return FLASH_ERROR;
+        }
+        curpos += chunk;
+    }
+
+    // --- detect real block count ---
+    curpos = hdrsize;
+    int bl;
+    for (bl = 0; bl < blocks; bl++)
+    {
+        if (curpos + 8 >= size)
+            break;
+        long bsize = ((long *)(addr + curpos))[1];
+        if (bsize > BLOCK_SIZE)
+            break;
+        curpos += 8;
+        if (curpos + bsize > size)
+            break;
+        curpos += bsize;
+    }
+    blocks = bl;
+    printf("flashing %d blocks\n", blocks);
+
+    // --- flash blocks ---
+    curpos = hdrsize;
+    for (bl = 0; bl < blocks; bl++)
+    {
+        if (curpos + 8 >= size)
+            break;
+
+        int addr_val = ((int *)(addr + curpos))[0];
+        int bsize = ((int *)(addr + curpos))[1];
+
+        printf("\rflashing block %d/%d (addr %08X size %08X)",
+               bl + 1, blocks, addr_val, bsize);
+
+        // send block header
+        uint8_t cmd_buf[0x1000];
+        int cmd_len = cmd_encode_binary_packet(0x10, addr + curpos, 8, cmd_buf);
+        if (cmd_len <= 0)
+            return FLASH_ERROR;
+
+        if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
+            return FLASH_ERROR;
+
+        if (serial_wait_ack(port, TIMEOUT) < 0)
+            return FLASH_ERROR;
+
+        if (bsize > BLOCK_SIZE)
+            break;
+
+        curpos += 8;
+
+        if ((curpos + bsize > size))
+            break;
+
+        // send block data in chunks
+        while (bsize > 0)
+        {
+            uint32_t tsize = (bsize > 0x800) ? 0x800 : bsize;
+            cmd_len = cmd_encode_binary_packet(0x01, addr + curpos, tsize, cmd_buf);
+            if (cmd_len <= 0)
+                return FLASH_ERROR;
+            if (serial_write_chunks(port, cmd_buf, cmd_len, 0x180) < 0)
+                return FLASH_ERROR;
+            if (serial_wait_ack(port, TIMEOUT) < 0)
+                return FLASH_ERROR;
+
+            curpos += tsize;
+            bsize -= tsize;
+        }
+
+        // wait for block reply
+        uint8_t resp[8];
+        int rcv_len = serial_wait_packet(port, resp, sizeof(resp), TIMEOUT);
+        if (rcv_len <= 0)
+            return FLASH_ERROR;
+
+        struct packetdata_t repl;
+        if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
+            return FLASH_ERROR;
+
+        switch (repl.cmd)
+        {
+        case 0x13:
+            if (repl.length != 1 || repl.data[0] != 0x00)
+            {
+                printf("\nsend block error\n");
+                return FLASH_ERROR;
+            }
+            break;
+        default:
+            printf("\nunexpected reply during flash block: 0x%02X\n", repl.cmd);
+            return FLASH_ERROR;
+        }
+    }
+
+    // --- finalization ---
+    if (flashfull)
+    {
+        uint8_t cmd_buf[0x100];
+        int cmd_len = cmd_encode_binary_packet(0x11, NULL, 0, cmd_buf);
+        if (cmd_len <= 0)
+            return FLASH_ERROR;
+
+        if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
+            return FLASH_ERROR;
+
+        uint8_t resp[8];
+        int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 200 * TIMEOUT); // 20s timeout
+        if (rcv_len <= 0)
+            return FLASH_ERROR;
+
+        struct packetdata_t repl;
+        if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
+            return FLASH_ERROR;
+
+        switch (repl.cmd)
+        {
+        case 0x12:
+            if (repl.length != 1 || repl.data[0] != 0x00)
+            {
+                printf("final error\n");
+                return FLASH_ERROR;
+            }
+            break;
+        default:
+            printf("unexpected reply during final check: 0x%02X\n", repl.cmd);
+            return FLASH_ERROR;
+        }
+    }
+
+    printf("\n\n%d blocks flashed ok\n", blocks);
+
+    return FLASH_OK;
+}
+
+int flash_babe_fw(struct sp_port *port, const char *filename, int flashfull)
 {
     printf("\nflashing babe: %s\n", filename);
 
@@ -247,176 +420,11 @@ int flash_babe(struct sp_port *port, const char *filename, int flashfull)
         goto exit_error;
     }
 
-    struct babehdr_t *hdr = (struct babehdr_t *)addr;
-    int fileformatver = hdr->ver;
-    int hashsize = fileformatver >= 4 ? 20 : 1;
-    int blocks = hdr->payloadsize1;
-    int hdrsize = (fileformatver <= 2) ? 0x480 : blocks * hashsize + 0x380;
-
-    // --- send header ---
-    int curpos = 0;
-    while (curpos < hdrsize)
+    if (flash_babe(port, addr, size, flashfull) == 0)
     {
-        int chunk = hdrsize - curpos;
-        if (chunk > 0x800)
-            chunk = 0x800;
-
-        uint8_t cmd_buf[0x1000];
-        int cmd_len = cmd_encode_binary_packet(0x0E, addr + curpos, chunk, cmd_buf);
-        if (cmd_len <= 0)
-            goto exit_error;
-
-        if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
-            goto exit_error;
-
-        uint8_t resp[7];
-        int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 5 * TIMEOUT);
-        if (rcv_len <= 0)
-            goto exit_error;
-
-        struct packetdata_t repl;
-        if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
-            goto exit_error;
-
-        if (repl.cmd != 0x0F || repl.length != 1 || repl.data[0] != 0x00)
-        {
-            printf("send header error\n");
-            goto exit_error;
-        }
-        curpos += chunk;
+        free(addr);
+        return FLASH_OK;
     }
-
-    // --- detect real block count ---
-    curpos = hdrsize;
-    int bl;
-    for (bl = 0; bl < blocks; bl++)
-    {
-        if (curpos + 8 >= size)
-            break;
-        long bsize = ((long *)(addr + curpos))[1];
-        if (bsize > 0x10000)
-            break;
-        curpos += 8;
-        if (curpos + bsize > size)
-            break;
-        curpos += bsize;
-    }
-    blocks = bl;
-    printf("flashing %d blocks\n", blocks);
-
-    // --- flash blocks ---
-    curpos = hdrsize;
-    for (bl = 0; bl < blocks; bl++)
-    {
-        if (curpos + 8 >= size)
-            break;
-
-        int addr_val = ((int *)(addr + curpos))[0];
-        int bsize = ((int *)(addr + curpos))[1];
-
-        printf("\rflashing block %d/%d (addr %08X size %08X)",
-               bl + 1, blocks, addr_val, bsize);
-
-        // send block header
-        uint8_t cmd_buf[0x1000];
-        int cmd_len = cmd_encode_binary_packet(0x10, addr + curpos, 8, cmd_buf);
-        if (cmd_len <= 0)
-            goto exit_error;
-
-        if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
-            goto exit_error;
-
-        if (serial_wait_ack(port, TIMEOUT) < 0)
-            goto exit_error;
-
-        if (bsize > 0x10000)
-            break;
-
-        curpos += 8;
-
-        if ((curpos + bsize > size))
-            break;
-
-        // send block data in chunks
-        while (bsize > 0)
-        {
-            uint32_t tsize = (bsize > 0x800) ? 0x800 : bsize;
-            cmd_len = cmd_encode_binary_packet(0x01, addr + curpos, tsize, cmd_buf);
-            if (cmd_len <= 0)
-                goto exit_error;
-            if (serial_write_chunks(port, cmd_buf, cmd_len, 0x180) < 0)
-                goto exit_error;
-            if (serial_wait_ack(port, TIMEOUT) < 0)
-                goto exit_error;
-
-            curpos += tsize;
-            bsize -= tsize;
-        }
-
-        // wait for block reply
-        uint8_t resp[8];
-        int rcv_len = serial_wait_packet(port, resp, sizeof(resp), TIMEOUT);
-        if (rcv_len <= 0)
-            goto exit_error;
-
-        struct packetdata_t repl;
-        if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
-            goto exit_error;
-
-        switch (repl.cmd)
-        {
-        case 0x13:
-            if (repl.length != 1 || repl.data[0] != 0x00)
-            {
-                printf("\nsend block error\n");
-                goto exit_error;
-            }
-            break;
-        default:
-            printf("\nunexpected reply during flash block: 0x%02X\n", repl.cmd);
-            goto exit_error;
-        }
-    }
-
-    // --- finalization ---
-    if (flashfull)
-    {
-        uint8_t cmd_buf[0x100];
-        int cmd_len = cmd_encode_binary_packet(0x11, NULL, 0, cmd_buf);
-        if (cmd_len <= 0)
-            goto exit_error;
-
-        if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
-            goto exit_error;
-
-        uint8_t resp[8];
-        int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 200 * TIMEOUT); // 20s timeout
-        if (rcv_len <= 0)
-            goto exit_error;
-
-        struct packetdata_t repl;
-        if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
-            goto exit_error;
-
-        switch (repl.cmd)
-        {
-        case 0x12:
-            if (repl.length != 1 || repl.data[0] != 0x00)
-            {
-                printf("final error\n");
-                goto exit_error;
-            }
-            break;
-        default:
-            printf("unexpected reply during final check: 0x%02X\n", repl.cmd);
-            goto exit_error;
-        }
-    }
-
-    printf("\n\n%d blocks flashed ok\n", blocks);
-
-    free(addr);
-    return FLASH_OK;
 
 exit_error:
     free(addr);
@@ -424,7 +432,61 @@ exit_error:
 }
 
 // TODO
-int flash_raw()
+int flash_raw(struct sp_port *port, const char *filename, uint32_t rawaddr)
 {
-    return 0;
+    printf("\nflashing raw: %s\n", filename);
+
+    FILE *fb = fopen(filename, "rb");
+    if (!fb)
+    {
+        fprintf(stderr, "file (%s) does not exist!\n", filename);
+        return -1;
+    }
+
+    // Read entire loader into memory
+    fseek(fb, 0, SEEK_END);
+    long size = ftell(fb);
+    fseek(fb, 0, SEEK_SET);
+
+    uint8_t *raw = malloc(size);
+    if (!raw)
+    {
+        fclose(fb);
+        fprintf(stderr, "No memory (%li bytes)\n", size);
+        return -1;
+    }
+
+    fread(raw, 1, size, fb);
+    fclose(fb);
+
+    printf("converting raw->babe\n");
+    long numblocks = (size + 0xFFFF) / BLOCK_SIZE;
+    long babesize = numblocks * (8 + 1) + size + sizeof(struct babehdr_t);
+
+    uint8_t *babe = malloc(babesize);
+    struct babehdr_t *babe_hdr = (struct babehdr_t *)babe;
+
+    babe_hdr->sig = 0xBEBA;
+    babe_hdr->ver = 3;
+    babe_hdr->payloadsize1 = numblocks;
+    long pos = sizeof(struct babehdr_t) + numblocks;
+    uint8_t *rawp = raw;
+    while (size)
+    {
+        int bsize = size > BLOCK_SIZE ? BLOCK_SIZE : size;
+        *((uint32_t *)(babe + pos)) = rawaddr;
+        pos += 4;
+        *((uint32_t *)(babe + pos)) = bsize;
+        pos += 4;
+        memcpy(babe + pos, rawp, bsize);
+        pos += bsize;
+        rawp += bsize;
+        size -= bsize;
+        rawaddr += bsize;
+    }
+
+    int ret = flash_babe(port, babe, babesize, 1);
+    free(raw);
+    free(babe);
+    return ret;
 }

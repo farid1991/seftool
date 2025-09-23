@@ -15,8 +15,6 @@
 #define DB2020_MEMPLOADER_RED_CID53_R2A012 "./loader/db2020_cid53_mem_patcher_r2a012.bin"
 #define DB2020_RECOVERY_LOADER_BLUE01_P3N "./loader/db2020_cid01blue_recovery_p3n.bin"
 #define DB2000_BREAK "./loader/2000_3e"
-#define DB2000_BREAK_R1F "./loader/2000_3e_r1f_r3l"
-#define DB2010_BREAK_R2E "./loader/2010_3e_r2f_r2e"
 
 // CHIP SELECT LOADERS
 #define DB2000_CSLOADER_RED_CID49_P4K "./loader/db2000_cid49red_cs_p4k.bin"
@@ -60,8 +58,6 @@
 #define DB2010_FLLOADER_RED_CID49_R2B "./loader/db2010_cid49red_flash_r2b.bin"
 
 #define DB2010_FLLOADER_BRW_CID49_R5A "./loader/db2010_cid49brown_flash_r5a.bin"
-#define DB2010_FLLOADER_RED_CID49_R2B_DEN_PO "./loader/db2010_cid49r_flash_r2b_den_po.bin"
-#define DB2010_FLLOADER_P5G_DEN_PO "./loader/2010_f_p5g"
 
 #define DB2012_FLLOADER_RED_CID50_R1A002 "./loader/db2012_cid50red_flash_r1a002.bin"
 #define DB2012_FLLOADER_RED_CID51_R2B012 "./loader/db2012_cid51red_flash_r2b012.bin"
@@ -73,7 +69,6 @@
 #define DB2020_FLLOADER_RED_CID51_R2A005 "./loader/db2020_cid51red_flash_r2a005.bin"
 #define DB2020_FLLOADER_RED_CID52_R2A005 "./loader/db2020_cid52red_flash_r2a005.bin"
 #define DB2020_FLLOADER_RED_CID53_R2A015 "./loader/db2020_cid53red_flash_r2a015.bin"
-#define DB2020_FLLOADER_R2A005_DEN_PO "./loader/2020_f_R2A005"
 
 #define PNX5230_FLLOADER_RED_CID51_R2A016 "./loader/PNX5230_cid51red_flash_r2a016.bin"
 #define PNX5230_FLLOADER_RED_CID52_R2A019 "./loader/PNX5230_cid52red_flash_r2a019.bin"
@@ -96,6 +91,16 @@
 #define DB2020_PILOADER_RED_CID01_P3J "./loader/db2020_cid01_prodid_p3j.bin"
 #define DB2020_PILOADER_RED_CID01_P3M "./loader/db2020_cid01_prodid_p3m.bin"
 #define DB2020_PILOADER_BROWN_CID49_SETOOL "./loader/db2020_cid49brown_prodloader_setool2.bin"
+
+// PATCHED loader from den_po =)
+#define DB2000_BREAK_R1F "./loader/2000_3e_r1f_r3l"
+#define DB2010_BREAK_R2E "./loader/2010_3e_r2f_r2e"
+#define DB2020_FLLOADER_R2A005_DEN_PO "./loader/2020_f_R2A005"
+#define DB2020_FLLOADER_R2B_DEN_PO "./loader/2010_f_r2b"
+#define DB2010_FLLOADER_P5G_DEN_PO "./loader/2010_f_p5g"
+#define DB2010_CSLOADER_R2C_DEN_PO "./loader/2010_cs_R2C"
+#define PNX5320_PROLOGUE "./loader/pnx5230_prologue"
+#define PNX5230_PRODUCTION "./loader/PNX5230_PRODUCTION"
 
 enum ldr_type_e
 {

@@ -209,7 +209,7 @@ int action_identify(struct sp_port *port, struct phone_info *phone)
     gdfs_get_brand(port, phone, &gdfs);
     printf("Brand: %s\n", gdfs.brand);
 
-    if (phone->chip_id != DB2000)
+    if (phone->chip_id != DB2000 || phone->chip_id != DB2010_1)
     {
         gdfs_get_cxc_article(port, phone, &gdfs);
         printf("MAPP CXC article: %s\n", gdfs.cxc_article);
@@ -258,12 +258,12 @@ int action_flash_fw(struct sp_port *port, struct phone_info *phone, const char *
     if (loader_send_oflash_ldr(port, phone) != 0)
         return -1;
 
-    if (flash_babe(port, main_fw, 1) != 0)
+    if (flash_babe_fw(port, main_fw, 1) != 0)
         return -1;
 
     if (fs_fw)
     {
-        if (flash_babe(port, fs_fw, 1) != 0)
+        if (flash_babe_fw(port, fs_fw, 1) != 0)
             return -1;
     }
 

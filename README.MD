@@ -60,7 +60,7 @@ Options:
   -a, --action <action>   Action:
                           identify
                           flash <main> <fs>
-                          read-flash <addr> <size>
+                          start <addr> size <bytes> OR block <count>
                           read-gdfs
                           write-gdfs <filename>
                           unlock <usercode|simlock>
@@ -74,7 +74,7 @@ Options:
 | Action         | DB2000        | DB201x                | DB2020  | PNX5230        |
 |:---------------|:-------------:|:---------------------:|:-------:|:--------------:|
 | identify       | OK            | OK                    | OK      | OK             |
-| flash          | CID36++       | OK                    | OK      | OK             |
+| flash          | OK            | OK                    | OK      | OK             |
 | read-flash     | CID36,BROWN49 | CID36,BROWN49,BROWN51 | BROWN49 | anycid exploit |
 | read-gdfs      | OK            | OK                    | OK      | OK             |
 | write-gdfs     | OK            | OK                    | OK      | OK             |
@@ -155,7 +155,7 @@ $ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash fs.fbn
 
 #### Read 512 KB from flash at 0x44000000:
 ```sh
-$ ./seftool -p COM2 -b 921600 -a read-flash 0x44000000 0x80000
+$ ./seftool -p COM2 -b 921600 -a read-flash start 0x44000000 size 0x80000
 ```
 
 ### Backup GDFS (read-gdfs):
