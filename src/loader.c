@@ -1044,6 +1044,13 @@ int loader_send_csloader_db2020(struct sp_port *port, struct phone_info *phone)
     if (loader_send_qhldr(port, phone, DB2020_PILOADER_RED_CID01_P3M) != 0)
         return -1;
 
+    if (phone->erom_color == BROWN)
+    {
+        if (loader_send_binary(port, phone, DB2020_PILOADER_BROWN_CID49_SETOOL) != 0)
+            return -1;
+        return loader_send_binary(port, phone, DB2020_CSLOADER_R3A006_SETOOL);
+    }
+
     switch (phone->erom_cid)
     {
     case 49:
@@ -1463,17 +1470,18 @@ int loader_send_bflash_ldr(struct sp_port *port, struct phone_info *phone)
         }
         break;
     case DB2020:
-        if (phone->erom_cid == 49 && phone->erom_color == BROWN)
+        if (loader_send_qhldr(port, phone, DB2020_PILOADER_RED_CID01_P3M) != 0)
+            return -1;
+        if (phone->erom_color == BROWN)
         {
-            if (loader_send_qhldr(port, phone, DB2020_PILOADER_RED_CID01_P3M) != 0)
-                return -1;
             if (loader_send_binary(port, phone, DB2020_PILOADER_BROWN_CID49_SETOOL) != 0)
                 return -1;
             if (loader_send_binary(port, phone, DB2020_FLLOADER_R2A005_DEN_PO) != 0)
                 return -1;
             return 0;
         }
-        break;
+        fprintf(stderr, "This cid & cert is not supported, convert to brown first\n");
+        return -1;
 
     case PNX5230:
         skiperrors = 1;

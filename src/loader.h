@@ -106,6 +106,7 @@
 #define DB2010_FLLOADER_P5G_DEN_PO "./loader/2010_f_p5g"
 #define DB2010_CSLOADER_R2C_DEN_PO "./loader/2010_cs_R2C"
 #define DB2000_CSLOADER_R4B_SETOOL "./loader/2000_csold_R4B_setool"
+#define DB2020_CSLOADER_R3A006_SETOOL "./loader/2020_cs_R3A006"
 #define PNX5320_PROLOGUE "./loader/pnx5230_prologue"
 #define PNX5230_PRODUCTION "./loader/PNX5230_PRODUCTION"
 
