@@ -19,13 +19,13 @@ int gdfs_get_phonename(struct sp_port *port, struct phone_info *phone, struct gd
     switch (phone->chip_id)
     {
     case DB2000:
-        block = 0x04;
+        block = is_z1010 ? 0x04 : 0x02;
         msb = 0x8F;
         lsb = 0x0C;
         break;
 
-    case 0x8000:
-    case 0x8040:
+    case DB2010_1:
+    case DB2010_2:
         block = 0x02;
         msb = 0x8F;
         lsb = 0x0C;
@@ -53,13 +53,13 @@ int gdfs_get_brand(struct sp_port *port, struct phone_info *phone, struct gdfs_d
     switch (phone->chip_id)
     {
     case DB2000:
-        block = 0x04;
+        block = is_z1010 ? 0x04 : 0x02;
         msb = 0xB9;
         lsb = 0x0C;
         break;
 
-    case 0x8000:
-    case 0x8040:
+    case DB2010_1:
+    case DB2010_2:
         block = 0x02;
         msb = 0xB9;
         lsb = 0x0C;
@@ -202,8 +202,8 @@ int gdfs_get_cxc_article(struct sp_port *port, struct phone_info *phone, struct 
 
     switch (phone->chip_id)
     {
-    case 0x8000:
-    case 0x8040:
+    case DB2010_1:
+    case DB2010_2:
         block = 0x02;
         msb = 0xE9;
         lsb = 0x0C;
@@ -230,8 +230,8 @@ int gdfs_get_cxc_version(struct sp_port *port, struct phone_info *phone, struct 
 
     switch (phone->chip_id)
     {
-    case 0x8000:
-    case 0x8040:
+    case DB2010_1:
+    case DB2010_2:
         block = 0x02;
         msb = 0xEA;
         lsb = 0x0C;
@@ -258,13 +258,13 @@ int gdfs_get_language(struct sp_port *port, struct phone_info *phone, struct gdf
     switch (phone->chip_id)
     {
     case DB2000:
-        block = 0x04;
+        block = is_z1010 ? 0x04 : 0x02;
         msb = 0xBB;
         lsb = 0x0C;
         break;
 
-    case 0x8000:
-    case 0x8040:
+    case DB2010_1:
+    case DB2010_2:
         block = 0x02;
         msb = 0xBB;
         lsb = 0x0C;
@@ -291,13 +291,13 @@ int gdfs_get_cda_article(struct sp_port *port, struct phone_info *phone, struct 
     switch (phone->chip_id)
     {
     case DB2000:
-        block = 0x04;
+        block = is_z1010 ? 0x04 : 0x02;
         msb = 0xBC;
         lsb = 0x0C;
         break;
 
-    case 0x8000:
-    case 0x8040:
+    case DB2010_1:
+    case DB2010_2:
         block = 0x02;
         msb = 0xBC;
         lsb = 0x0C;
@@ -325,13 +325,13 @@ int gdfs_get_cda_revision(struct sp_port *port, struct phone_info *phone, struct
     switch (phone->chip_id)
     {
     case DB2000:
-        block = 0x04;
+        block = is_z1010 ? 0x04 : 0x02;
         msb = 0xBD;
         lsb = 0x0C;
         break;
 
-    case 0x8000:
-    case 0x8040:
+    case DB2010_1:
+    case DB2010_2:
         block = 0x02;
         msb = 0xBD;
         lsb = 0x0C;
@@ -359,13 +359,13 @@ int gdfs_get_default_article(struct sp_port *port, struct phone_info *phone, str
     switch (phone->chip_id)
     {
     case DB2000:
-        block = 0x04;
+        block = is_z1010 ? 0x04 : 0x02;
         msb = 0xBE;
         lsb = 0x0C;
         break;
 
-    case 0x8000:
-    case 0x8040:
+    case DB2010_1:
+    case DB2010_2:
         block = 0x02;
         msb = 0xBE;
         lsb = 0x0C;
@@ -393,13 +393,13 @@ int gdfs_get_default_version(struct sp_port *port, struct phone_info *phone, str
     switch (phone->chip_id)
     {
     case DB2000:
-        block = 0x04;
+        block = is_z1010 ? 0x04 : 0x02;
         msb = 0xBF;
         lsb = 0x0C;
         break;
 
-    case 0x8000:
-    case 0x8040:
+    case DB2010_1:
+    case DB2010_2:
         block = 0x02;
         msb = 0xBF;
         lsb = 0x0C;

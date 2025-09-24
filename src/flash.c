@@ -75,30 +75,20 @@ int flash_read(struct sp_port *port, struct phone_info *phone,
             fclose(out);
             return -1;
         }
-
-        int hdr = hdr_buf[0];               // must be 0x89
-        int cmd = hdr_buf[1];               // command ID
+ 
         int length = get_half(&hdr_buf[2]); // little endian u16
 
-        if (hdr != SERIAL_HDR89)
+        if (hdr_buf[0] != SERIAL_HDR89)
         {
-            fprintf(stderr, "Bad HDR: 0x%02X\n", hdr);
+            fprintf(stderr, "Bad HDR: 0x%02X\n", hdr_buf[0]);
             fclose(out);
             return -1;
         }
 
-        // Error packet (type = 0x09)
-        if (cmd == 0x09)
+        // Must be data reply (type = 0x33) // command ID
+        if (hdr_buf[1] != 0x33)
         {
-            fprintf(stderr, "Bad CMD: %X\n", cmd);
-            fclose(out);
-            return -1;
-        }
-
-        // Must be data reply (type = 0x33)
-        if (cmd != 0x33)
-        {
-            fprintf(stderr, "Unexpected CMD 0x33 got 0x%X\n", cmd);
+            fprintf(stderr, "Unexpected CMD 0x33 got 0x%X\n", hdr_buf[1]);
             fclose(out);
             return -1;
         }
@@ -138,11 +128,15 @@ int flash_read(struct sp_port *port, struct phone_info *phone,
 
         if (sum == checksum)
         {
-            uint8_t ack = SERIAL_ACK;
-            if (serial_write(port, &ack, 1) < 0)
+            // only ACK if not the final block
+            if (pos + (length - 6) < size)
             {
-                fclose(out);
-                return -1;
+                uint8_t ack = SERIAL_ACK;
+                if (serial_write(port, &ack, 1) < 0)
+                {
+                    fclose(out);
+                    return -1;
+                }
             }
         }
         else

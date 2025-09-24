@@ -28,6 +28,7 @@
 int loader_type = 0;
 int skip_cmd = 0;
 int skiperrors = 0;
+int is_z1010 = 0;
 
 static int create_backup_dir(const char *path)
 {

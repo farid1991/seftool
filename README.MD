@@ -71,15 +71,15 @@ Options:
 
 ## Supported devices
 
-| Action         | DB2000        | DB201x                | DB2020  | PNX5230        |
-|:---------------|:-------------:|:---------------------:|:-------:|:--------------:|
-| identify       | OK            | OK                    | OK      | OK             |
-| flash          | OK            | OK                    | OK      | OK             |
-| read-flash     | CID36,BROWN49 | CID36,BROWN49,BROWN51 | BROWN49 | anycid exploit |
-| read-gdfs      | OK            | OK                    | OK      | OK             |
-| write-gdfs     | OK            | OK                    | OK      | OK             |
-| unlock-usercode| OK            | OK                    | OK      | OK             |
-| unlock-simlock | TODO          | TODO                  | TODO    | TODO           |
+| Action         | DB2000           | DB201x              | DB2020  | PNX5230        |
+|:---------------|:----------------:|:-------------------:|:-------:|:--------------:|
+| identify       | OK               | OK                  | OK      | OK             |
+| flash          | OK (except Z1010)| OK                  | OK      | OK             |
+| read-flash     | CID29&36,BROWN49 | CID29&36,BROWN49&51 | BROWN49 | anycid exploit |
+| read-gdfs      | OK               | OK                  | OK      | OK             |
+| write-gdfs     | OK               | OK                  | OK      | OK             |
+| unlock-usercode| OK               | OK                  | OK      | OK             |
+| unlock-simlock | TODO             | TODO                | TODO    | TODO           |
 
 
 ---
@@ -197,12 +197,14 @@ Using `seftool` may permanently damage your device if used incorrectly.
 
 * **DB2000** has max **460800** baudrate.
 
+* Z1010 flash MAIN is incorrect.
+
 * **PNX5230** read flash use `anycid` method, restore firmware is not implemented yet.
 ---
 
 ## TODO
 1. CDA upload (flash customization).
-2. Complete operation for phone with CID16 and CID29 (DB2000 & DB2010)
+2. Complete operation for phone with CID16 and ~~CID29~~ (DB2000 & DB2010)
 3. VKP patching
 4. ...
 

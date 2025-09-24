@@ -14,11 +14,15 @@
 #define DB2020_MEMPLOADER_RED_CID52_R2A006 "./loader/db2020_cid52_mem_patcher_r2a006.bin"
 #define DB2020_MEMPLOADER_RED_CID53_R2A012 "./loader/db2020_cid53_mem_patcher_r2a012.bin"
 #define DB2020_RECOVERY_LOADER_BLUE01_P3N "./loader/db2020_cid01blue_recovery_p3n.bin"
-#define DB2000_BREAK "./loader/2000_3e"
+#define DB2000_BREAK "./loader/2000_3e_setool"
+#define DB2010_BREAK "./loader/2010_3e_setool"
 
 // CHIP SELECT LOADERS
+#define DB2000_VIOLA_FILE_SYSTEM_LOADER_R1E "./loader/db2000_SEMC_VIOLA_FILE_SYSTEM_LOADER_R1E.bin"
+#define DB2000_SEMC_FILE_SYSTEM_LOADER_R2B "./loader/db2000_SEMC_FILE_SYSTEM_LOADER_R2B.bin"
 #define DB2000_CSLOADER_RED_CID49_P4K "./loader/db2000_cid49red_cs_p4k.bin"
 #define DB2000_CSLOADER_RED_CID49_P4L "./loader/db2000_cid49red_cs_p4l.bin"
+#define DB2000_CSLOADER_RED_CID37_P4L "./loader/db2000_cid37red_cs_p4l.bin"
 
 #define DB2010_CSLOADER_RED_CID29_P2C "./loader/db2010_cid29red_cs_p2c.bin"
 #define DB2010_CSLOADER_HAK_CID00_V23 "./loader/db2010_cid00_cs_hack_v23.bin"
@@ -77,10 +81,12 @@
 // PRODUCT_ID LOADERS
 #define DB2000_PILOADER_RED_CID00_R1F "./loader/db2000_cid00_prodid_r1f.bin"
 #define DB2000_PILOADER_RED_CID00_R2B "./loader/db2000_cid00_prodid_r2b.bin"
+#define DB2000_VIOLA_PRODUCTION_R2Z "./loader/db2000_viola_prod_r2z.bin"
 #define DB2000_PRODUCTION_R2Z "./loader/db2000_prod_r2z.bin"
 #define DB2000_PILOADER_RED_CID00_R3A "./loader/db2000_cid00_prodid_r3a.bin"
 #define DB2000_PILOADER_RED_CID03_P3B "./loader/db2000_cid03_prodid_p3b.bin"
 #define DB2010_PILOADER_RED_CID00_R2F "./loader/db2010_cid00_prodid_r2f.bin"
+#define DB2010_PRODUCTION_R2AB "./loader/DB2010_PRODUCTION_R2AB.bin"
 #define DB2010_PILOADER_RED_CID00_R2AB "./loader/db2010_cid00_prodid_r2ab.bin"
 #define DB2010_PILOADER_RED_CID00_P3L "./loader/db2010_cid00_prodid_p3l.bin"
 #define DB2010_PILOADER_RED_CID00_P4D "./loader/db2010_cid00_prodid_p4d.bin"
@@ -99,6 +105,7 @@
 #define DB2020_FLLOADER_R2B_DEN_PO "./loader/2010_f_r2b"
 #define DB2010_FLLOADER_P5G_DEN_PO "./loader/2010_f_p5g"
 #define DB2010_CSLOADER_R2C_DEN_PO "./loader/2010_cs_R2C"
+#define DB2000_CSLOADER_R4B_SETOOL "./loader/2000_csold_R4B_setool"
 #define PNX5320_PROLOGUE "./loader/pnx5230_prologue"
 #define PNX5230_PRODUCTION "./loader/PNX5230_PRODUCTION"
 

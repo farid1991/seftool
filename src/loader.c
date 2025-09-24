@@ -51,7 +51,7 @@ int loader_get_hello(struct packetdata_t *packet)
 
     loader_type = LDR_UNKNOWN;
 
-    if (strstr(loader_hello, "CS_LOADER") || strstr(loader_hello, "CSLOADER"))
+    if (strstr(loader_hello, "CS_LOADER") || strstr(loader_hello, "CSLOADER") || strstr(loader_hello, "FILE_SYSTEM_LOADER"))
     {
         // printf("This is a CHIPSELECT loader\n");
         loader_type = LDR_CHIPSELECT;
@@ -154,9 +154,9 @@ int loader_send_binary_cmd3e(struct sp_port *port, const char *loader_name)
         if (cmd_decode_packet_ack(hello_buf, rcv_len, &repl) != 0)
             return -1;
     }
-    else if (hello_buf[0] == 0xFC && hello_buf[1] == 0xFF) // CMD3E DB2000 Z1010
+    else if (hello_buf[0] == 0xFC && hello_buf[1] == 0xFF) // CMD3E DB2000 DB2010 from SETOOL
     {
-        printf("DB2000 CMD3E\n");
+        printf("Break CMD3E\n");
         return 0;
     }
     else
@@ -170,7 +170,7 @@ int loader_send_binary_cmd3e(struct sp_port *port, const char *loader_name)
     return 0;
 }
 
-int loader_break_cid29(struct sp_port *port, const char *loader_name)
+int loader_send_unsigned_ldr(struct sp_port *port, const char *loader_name, uint32_t ram_addr)
 {
     FILE *fh = fopen(loader_name, "rb");
     if (!fh)
@@ -197,16 +197,27 @@ int loader_break_cid29(struct sp_port *port, const char *loader_name)
     fread(buffer, 1, fsize, fh);
     fclose(fh);
 
-    uint8_t empty[4] = {0};
+    // --- Build ram_addr packet (little endian)
+    uint8_t addr_packet[4];
+    addr_packet[0] = (uint8_t)(ram_addr & 0xFF);
+    addr_packet[1] = (uint8_t)((ram_addr >> 8) & 0xFF);
+    addr_packet[2] = (uint8_t)((ram_addr >> 16) & 0xFF);
+    addr_packet[3] = (uint8_t)((ram_addr >> 24) & 0xFF);
 
-    if (serial_write(port, empty, sizeof(empty)) < 0)
+    if (serial_write(port, addr_packet, sizeof(addr_packet)) < 0)
         goto error;
 
-    uint8_t cmd3c[4] = {0x3C, 0xE6, 0x00, 0x00};
+    // --- Build payload size packet (little endian)
+    uint8_t size_packet[4];
+    size_packet[0] = (uint8_t)(fsize & 0xFF);
+    size_packet[1] = (uint8_t)((fsize >> 8) & 0xFF);
+    size_packet[2] = (uint8_t)((fsize >> 16) & 0xFF);
+    size_packet[3] = (uint8_t)((fsize >> 24) & 0xFF);
 
-    if (serial_write(port, cmd3c, sizeof(cmd3c)) < 0)
+    if (serial_write(port, size_packet, sizeof(size_packet)) < 0)
         goto error;
 
+    // --- Send loader body
     if (serial_write_chunks(port, buffer, fsize, 0x400) < 0)
         goto error;
 
@@ -322,7 +333,7 @@ int loader_activate_payload(struct sp_port *port, struct phone_info *phone)
         switch (phone->chip_id)
         {
         case DB2000:
-            gdfsvar[0] = 0x04;
+            gdfsvar[0] = is_z1010 ? 0x04 : 0x02;
             gdfsvar[1] = 0x8F;
             gdfsvar[2] = 0x0C;
             break;
@@ -522,12 +533,6 @@ int loader_send_qhldr(struct sp_port *port, struct phone_info *phone, const char
     if (loader_activate_payload(port, phone) != 0)
         return -1;
 
-    if (phone->chip_id != PNX5230)
-    {
-        if (loader_get_erom_data(port, phone) != 0)
-            return -1;
-    }
-
     printf("FLASH ID: 0x%x (%s)\n", phone->flash_id, get_flash_vendor(phone->flash_id));
 
     printf("OTP: LOCKED:%d CID:%d PAF:%d IMEI:%s\n",
@@ -537,7 +542,12 @@ int loader_send_qhldr(struct sp_port *port, struct phone_info *phone, const char
            phone->otp_imei);
 
     if (skip_cmd == 0)
+    {
+        if (loader_get_erom_data(port, phone) != 0)
+            return -1;
+
         printf("ACTIVE CID:%02d COLOR:%s\n", phone->erom_cid, color_get_name(phone->erom_color));
+    }
 
     return 0;
 }
@@ -825,6 +835,9 @@ int loader_get_otp_data(struct sp_port *port, struct phone_info *phone)
     memcpy(phone->otp_imei, repl.data + 5, 14);
     phone->otp_imei[14] = '\0';
 
+    if (strstr(phone->otp_imei, "35345600"))
+        is_z1010 = 1;
+
     return 0;
 }
 
@@ -958,7 +971,7 @@ int loader_shutdown(struct sp_port *port)
         return -1;
 
     uint8_t resp[2];
-    int rcvlen = serial_wait_packet(port, resp, sizeof(resp), 50 * TIMEOUT);
+    int rcvlen = serial_wait_packet(port, resp, sizeof(resp), 20 * TIMEOUT);
     if (rcvlen <= 0)
         return -1;
 
@@ -974,7 +987,9 @@ int loader_enter_flashmode(struct sp_port *port, struct phone_info *phone)
     case DB2000:
         if (phone->erom_cid == 49)
             return loader_send_qhldr(port, phone, DB2000_PILOADER_RED_CID03_P3B);
-        return loader_send_qhldr(port, phone, DB2000_PILOADER_RED_CID00_R3A);
+        else if (phone->erom_cid == 36)
+            return loader_send_qhldr(port, phone, DB2000_PILOADER_RED_CID00_R3A);
+        return loader_send_qhldr(port, phone, DB2000_PILOADER_RED_CID03_P3B);
     case DB2010_1:
     case DB2010_2:
         if (phone->erom_cid <= 36)
@@ -990,6 +1005,7 @@ int loader_enter_flashmode(struct sp_port *port, struct phone_info *phone)
 
 int loader_send_oflash_ldr_pnx5230(struct sp_port *port, struct phone_info *phone)
 {
+    skip_cmd = 1;
     switch (phone->erom_cid)
     {
     case 51:
@@ -1046,6 +1062,19 @@ int loader_send_csloader_db2020(struct sp_port *port, struct phone_info *phone)
 
 int loader_send_csloader_db2010(struct sp_port *port, struct phone_info *phone)
 {
+    if (phone->erom_cid == 29)
+    {
+        skip_cmd = 1;
+        if (loader_send_qhldr(port, phone, DB2010_CERTLOADER_RED_CID01_R2E) != 0)
+            return -1;
+        if (loader_send_binary_cmd3e(port, DB2010_BREAK) != 0)
+            return -1;
+        if (loader_send_unsigned_ldr(port, DB2010_PRODUCTION_R2AB, 0x4C000000) != 0)
+            return -1;
+        if (loader_send_binary(port, phone, DB2010_CSLOADER_R2C_DEN_PO) != 0)
+            return -1;
+        return 0;
+    }
     if (phone->erom_cid <= 36) // Both RED and BROWN
     {
         if (loader_send_qhldr(port, phone, DB2010_PILOADER_RED_CID00_R2F) != 0)
@@ -1124,46 +1153,51 @@ int loader_send_csloader_db2010(struct sp_port *port, struct phone_info *phone)
     return -1;
 }
 
-// int loader_send_csloader_db2000(struct sp_port *port, struct phone_info *phone)
-// {
-//     switch (phone->erom_cid)
-//     {
-//         case 16:
-//         return loader_send_binary(port, phone, DB2020_CSLOADER_RED_CID49_R3A009);
+int loader_send_csloader_db2000(struct sp_port *port, struct phone_info *phone)
+{
+    // TODO CID16
+    switch (phone->erom_cid)
+    {
+    case 29:
+        skip_cmd = 1;
+        if (loader_send_qhldr(port, phone, DB2000_CERTLOADER_RED_CID00_R3L) != 0)
+            return -1;
+        if (loader_send_binary_cmd3e(port, DB2000_BREAK) != 0)
+            return -1;
+        if (loader_send_unsigned_ldr(port, is_z1010 ? DB2000_VIOLA_PRODUCTION_R2Z : DB2000_PRODUCTION_R2Z, 0) != 0)
+            return -1;
+        return loader_send_binary(port, phone, is_z1010 ? DB2000_VIOLA_FILE_SYSTEM_LOADER_R1E : DB2000_SEMC_FILE_SYSTEM_LOADER_R2B);
 
-//         case 29: // CSLOADER not working yet
-//             if (loader_send_qhldr(port, phone, DB2000_CERTLOADER_RED_CID00_R3L) != 0)
-//                 return -1;
-//             if (loader_send_binary_cmd3e(port, "./loader/2000_3e") != 0)
-//                 return -1;
-//             if (loader_break_cid29(port, "./loader/041214 0759 MATCXC1325712_PRODUCTION R2Z") != 0)
-//                 return -1;
-//             if (loader_activate_payload(port, phone) != 0)
-//                 return -1;
+    case 36:
+        skip_cmd = 1;
+        if (loader_send_qhldr(port, phone, DB2000_PILOADER_RED_CID00_R1F) != 0)
+            return -1;
+        if (loader_break_db2000_cid36(port, phone) != 0)
+            return -1;
+        return loader_send_binary(port, phone, DB2000_CSLOADER_R4B_SETOOL);
 
-//             return loader_send_binary(port, phone, "./loader/db2000_viola_csloader_r1e.bin");
+    case 37:
+        if (loader_send_qhldr(port, phone, DB2000_PILOADER_RED_CID00_R2B) != 0)
+            return -1;
+        return loader_send_binary(port, phone, DB2000_CSLOADER_RED_CID37_P4L);
 
-//         case 36:
-//             return loader_send_binary(port, phone, );
+    case 49:
+        if (loader_send_qhldr(port, phone, DB2000_PILOADER_RED_CID00_R2B) != 0)
+            return -1;
+        return loader_send_binary(port, phone, DB2000_CSLOADER_RED_CID49_P4L);
 
-//         case 37:
-//             return loader_send_binary(port, phone, );
-
-//         case 49:
-//             return loader_send_binary(port, phone, );
-
-//     default:
-//         printf("CID %d not supported\n", phone->erom_cid);
-//         return -1;
-//     }
-// }
+    default:
+        printf("CID %d not supported\n", phone->erom_cid);
+        return -1;
+    }
+}
 
 int loader_send_csloader(struct sp_port *port, struct phone_info *phone)
 {
     switch (phone->chip_id)
     {
-    // case DB2000: // TODO
-    //     return loader_send_csloader_db2000(port, phone);
+    case DB2000:
+        return loader_send_csloader_db2000(port, phone);
     case DB2010_1:
     case DB2010_2:
         return loader_send_csloader_db2010(port, phone);
@@ -1181,6 +1215,19 @@ int loader_send_csloader(struct sp_port *port, struct phone_info *phone)
 
 int loader_send_oflash_ldr_db2000(struct sp_port *port, struct phone_info *phone)
 {
+    // TODO CID16
+    // CID29 (both RED and BROWN)
+    if (phone->erom_cid == 29)
+    {
+        skip_cmd = 1;
+        if (loader_send_qhldr(port, phone, DB2000_CERTLOADER_RED_CID00_R3L) != 0)
+            return -1;
+        if (loader_send_binary_cmd3e(port, DB2000_BREAK) != 0)
+            return -1;
+        if (loader_send_unsigned_ldr(port, is_z1010 ? DB2000_VIOLA_PRODUCTION_R2Z : DB2000_PRODUCTION_R2Z, 0) != 0)
+            return -1;
+        return 0;
+    }
     // CID36 (both RED and BROWN)
     if (phone->erom_cid == 36)
     {
@@ -1209,6 +1256,19 @@ int loader_send_oflash_ldr_db2000(struct sp_port *port, struct phone_info *phone
 
 int loader_send_oflash_ldr_db2010(struct sp_port *port, struct phone_info *phone)
 {
+    // K500/K700
+    if (phone->erom_cid == 29)
+    {
+        skip_cmd = 1;
+        if (loader_send_qhldr(port, phone, DB2010_CERTLOADER_RED_CID01_R2E) != 0)
+            return -1;
+        if (loader_send_binary_cmd3e(port, DB2010_BREAK) != 0)
+            return -1;
+        if (loader_send_unsigned_ldr(port, DB2010_PRODUCTION_R2AB, 0x4C000000) != 0)
+            return -1;
+        return 0;
+    }
+
     // CID36 and lower (both RED and BROWN)
     if (phone->erom_cid <= 36)
     {
@@ -1326,14 +1386,15 @@ int loader_send_bflash_ldr(struct sp_port *port, struct phone_info *phone)
 {
     switch (phone->chip_id)
     {
-    case DB2000:
-        if (phone->erom_cid == 29) // Z1010
+    case DB2000: // TODO CID16
+        if (phone->erom_cid == 29)
         {
+            skip_cmd = 1;
             if (loader_send_qhldr(port, phone, DB2000_CERTLOADER_RED_CID00_R3L) != 0)
                 return -1;
             if (loader_send_binary_cmd3e(port, DB2000_BREAK) != 0)
                 return -1;
-            if (loader_break_cid29(port, DB2000_PRODUCTION_R2Z) != 0)
+            if (loader_send_unsigned_ldr(port, is_z1010 ? DB2000_VIOLA_PRODUCTION_R2Z : DB2000_PRODUCTION_R2Z, 0) != 0)
                 return -1;
             return 0;
         }
@@ -1360,7 +1421,18 @@ int loader_send_bflash_ldr(struct sp_port *port, struct phone_info *phone)
         break;
     case DB2010_1:
     case DB2010_2:
-        if (phone->erom_cid <= 36)
+        if (phone->erom_cid == 29) // K500/K700
+        {
+            skip_cmd = 1;
+            if (loader_send_qhldr(port, phone, DB2010_CERTLOADER_RED_CID01_R2E) != 0)
+                return -1;
+            if (loader_send_binary_cmd3e(port, DB2010_BREAK) != 0)
+                return -1;
+            if (loader_send_unsigned_ldr(port, DB2010_PRODUCTION_R2AB, 0x4C000000) != 0)
+                return -1;
+            return 0;
+        }
+        if (phone->erom_cid == 36)
         {
             if (loader_send_qhldr(port, phone, DB2010_PILOADER_RED_CID00_R2F) != 0)
                 return -1;
@@ -1381,10 +1453,10 @@ int loader_send_bflash_ldr(struct sp_port *port, struct phone_info *phone)
         }
         else if (phone->erom_cid == 51 && phone->erom_color == BROWN)
         {
+            skip_cmd = 1;
             if (loader_send_qhldr(port, phone, DB2010_PILOADER_RED_CID00_P4D) != 0)
                 return -1;
 
-            skip_cmd = 1;
             if (loader_send_binary(port, phone, DB2010_RESPIN_PRODLOADER_SETOOL2) != 0)
                 return -1;
             return 0;

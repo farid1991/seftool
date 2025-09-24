@@ -22,6 +22,7 @@
 extern int loader_type;
 extern int skip_cmd;
 extern int skiperrors;
+extern int is_z1010;
 
 struct phone_info
 {
