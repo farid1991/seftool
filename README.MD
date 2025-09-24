@@ -78,6 +78,7 @@ Options:
 | read-flash     | CID29&36,BROWN49 | CID29&36,BROWN49&51 | BROWN49 | anycid exploit |
 | read-gdfs      | OK               | OK                  | OK      | OK             |
 | write-gdfs     | OK               | OK                  | OK      | OK             |
+| write-script   | OK               | OK                  | OK      | OK             |
 | unlock-usercode| OK               | OK                  | OK      | OK             |
 | unlock-simlock | TODO             | TODO                | TODO    | TODO           |
 
@@ -166,6 +167,11 @@ $ ./seftool -p COM2 -b 921600 -a read-gdfs
 ### Restore GDFS from file (write-gdfs):
 ```sh
 $ ./seftool -p COM2 -b 921600 -a write-gdfs backup/gdfs.bin
+```
+
+### Write GDFS script (write-script):
+```sh
+$ ./seftool -p COM2 -b 921600 -a write-script secsunitbackup.txt
 ```
 
 ### Unlock usercode:

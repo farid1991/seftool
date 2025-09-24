@@ -297,6 +297,7 @@ static void print_usage(const char *progname)
     printf("                          start <addr> size <bytes> OR block <count>\n");
     printf("                          read-gdfs\n");
     printf("                          write-gdfs <filename>\n");
+    printf("                          write-script <filename>\n");
     printf("                          unlock <usercode|simlock>\n");
     printf("  -h, --help              Show this help message\n");
 }
@@ -308,6 +309,7 @@ int main(int argc, char **argv)
     const char *action = NULL;
     const char *unlock_target = NULL;
     const char *gdfs_filename = NULL;
+    const char *script_filename = NULL;
     const char *flash_mainfw = NULL;
     const char *flash_fsfw = NULL;
 
@@ -426,6 +428,18 @@ int main(int argc, char **argv)
                     return 1;
                 }
             }
+            else if (strcmp(action, "write-script") == 0)
+            {
+                if (i + 1 < argc)
+                {
+                    script_filename = argv[++i];
+                }
+                else
+                {
+                    fprintf(stderr, "Error: write-script requires <filename>\n");
+                    return 1;
+                }
+            }
         }
         else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
         {
@@ -451,6 +465,7 @@ int main(int argc, char **argv)
         strcmp(action, "read-flash") != 0 &&
         strcmp(action, "read-gdfs") != 0 &&
         strcmp(action, "write-gdfs") != 0 &&
+        strcmp(action, "write-script") != 0 &&
         strcmp(action, "unlock") != 0)
     {
         fprintf(stderr, "Error: available action 'identify' | 'unlock' | 'flash' | 'read-flash' | 'read-gdfs'\n");
@@ -484,6 +499,8 @@ int main(int argc, char **argv)
         printf("%s\n", unlock_target);
     else if (strcmp(action, "write-gdfs") == 0)
         printf("%s\n", gdfs_filename);
+    else if (strcmp(action, "write-script") == 0)
+        printf("%s\n", script_filename);
     else
         printf("\n");
 
@@ -547,6 +564,11 @@ int main(int argc, char **argv)
     else if (strcmp(action, "write-gdfs") == 0)
     {
         if (action_restore_gdfs(port, &phone, gdfs_filename) != 0)
+            goto exit_error;
+    }
+    else if (strcmp(action, "write-script") == 0)
+    {
+        if (action_exec_script(port, &phone, script_filename) != 0)
             goto exit_error;
     }
 

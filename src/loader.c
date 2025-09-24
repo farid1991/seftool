@@ -51,9 +51,14 @@ int loader_get_hello(struct packetdata_t *packet)
 
     loader_type = LDR_UNKNOWN;
 
-    if (strstr(loader_hello, "CS_LOADER") || strstr(loader_hello, "CSLOADER") || strstr(loader_hello, "FILE_SYSTEM_LOADER"))
+    if (strstr(loader_hello, "CS_LOADER") || strstr(loader_hello, "CSLOADER"))
     {
         // printf("This is a CHIPSELECT loader\n");
+        loader_type = LDR_CHIPSELECT;
+    }
+    else if (strstr(loader_hello, "FILESYSTEMLOADER") || strstr(loader_hello, "FILE_SYSTEM_LOADER"))
+    {
+        // printf("This is a FILESYSTEM loader\n");
         loader_type = LDR_CHIPSELECT;
     }
     else if (strstr(loader_hello, "PRODUCTION_ID") || strstr(loader_hello, "PRODUCTIONID"))
@@ -1046,9 +1051,9 @@ int loader_send_csloader_db2020(struct sp_port *port, struct phone_info *phone)
 
     if (phone->erom_color == BROWN)
     {
-        if (loader_send_binary(port, phone, DB2020_PILOADER_BROWN_CID49_SETOOL) != 0)
+        if (loader_send_binary(port, phone, DB2020_LOADER_FOR_SETOOL2) != 0)
             return -1;
-        return loader_send_binary(port, phone, DB2020_CSLOADER_R3A006_SETOOL);
+        return loader_send_binary(port, phone, DB2020_FSLOADER_P5G_SETOOL);
     }
 
     switch (phone->erom_cid)

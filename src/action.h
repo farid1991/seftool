@@ -21,5 +21,6 @@ int action_flash_fw(struct sp_port *port, struct phone_info *phone, const char *
 int action_read_flash(struct sp_port *port, struct phone_info *phone, uint32_t addr, uint32_t size);
 int action_backup_gdfs(struct sp_port *port, struct phone_info *phone);
 int action_restore_gdfs(struct sp_port *port, struct phone_info *phone, const char *inputfname);
+int action_exec_script(struct sp_port *port, struct phone_info *phone, const char *inputfname);
 
 #endif // se_h

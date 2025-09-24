@@ -17,9 +17,12 @@
 #define DB2000_BREAK "./loader/2000_3e_setool"
 #define DB2010_BREAK "./loader/2010_3e_setool"
 
-// CHIP SELECT LOADERS
+// FILE SYSTEM LOADER
 #define DB2000_VIOLA_FILE_SYSTEM_LOADER_R1E "./loader/db2000_SEMC_VIOLA_FILE_SYSTEM_LOADER_R1E.bin"
 #define DB2000_SEMC_FILE_SYSTEM_LOADER_R2B "./loader/db2000_SEMC_FILE_SYSTEM_LOADER_R2B.bin"
+#define DB2020_FSLOADER_P5G_SETOOL "./loader/DB2020_FSLOADER_P5G.bin"
+
+// CHIP SELECT LOADERS
 #define DB2000_CSLOADER_RED_CID49_P4K "./loader/db2000_cid49red_cs_p4k.bin"
 #define DB2000_CSLOADER_RED_CID49_P4L "./loader/db2000_cid49red_cs_p4l.bin"
 #define DB2000_CSLOADER_RED_CID37_P4L "./loader/db2000_cid37red_cs_p4l.bin"
@@ -97,6 +100,7 @@
 #define DB2020_PILOADER_RED_CID01_P3J "./loader/db2020_cid01_prodid_p3j.bin"
 #define DB2020_PILOADER_RED_CID01_P3M "./loader/db2020_cid01_prodid_p3m.bin"
 #define DB2020_PILOADER_BROWN_CID49_SETOOL "./loader/db2020_cid49brown_prodloader_setool2.bin"
+#define DB2020_LOADER_FOR_SETOOL2 "./loader/DB2020_LOADER_FOR_SETOOL2.bin"
 
 // PATCHED loader from den_po =)
 #define DB2000_BREAK_R1F "./loader/2000_3e_r1f_r3l"

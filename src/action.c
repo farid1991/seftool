@@ -295,6 +295,23 @@ int action_restore_gdfs(struct sp_port *port, struct phone_info *phone, const ch
     return 0;
 }
 
+int action_exec_script(struct sp_port *port, struct phone_info *phone, const char *inputfname)
+{
+    if (loader_send_csloader(port, phone) != 0)
+        return -1;
+
+    char script_name[512];
+    snprintf(script_name, sizeof(script_name), "./script_%s.txt", phone->otp_imei);
+
+    if (csloader_parse_gdfs_script(port, inputfname, script_name) != 0)
+        return -1;
+
+    if (gdfs_terminate_access(port) != 0)
+        return -1;
+
+    return 0;
+}
+
 int action_backup_gdfs(struct sp_port *port, struct phone_info *phone)
 {
     if (loader_send_csloader(port, phone) != 0)
