@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -153,4 +154,54 @@ int isbabe(uint8_t *addr, uint32_t size)
     uint32_t v2 = get_word(addr + 0x2E8);
 
     return (v1 + v2 + 0x380 == size);
+}
+
+int scan_fw_version(uint8_t *buf, size_t size, char *fw_id, size_t fw_id_size)
+{
+    int found = -1;
+    for (size_t i = 0; i < size - 3; i++)
+    {
+        if (memcmp(&buf[i], "prgCXC", 6) == 0 || // DB201X
+            memcmp(&buf[i], "prg120", 6) == 0)   // PNX5230
+        {
+            found = (int)i;
+            break;
+        }
+    }
+
+    if (found == -1)
+        return -1;
+
+    size_t j = 0;
+    for (; j < fw_id_size - 1 && found + j < size; j++)
+    {
+        uint8_t c = buf[found + j];
+        if (c == 0 || c == '\n' || c == '\r')
+            break;
+        fw_id[j] = (char)c;
+    }
+    fw_id[j] = '\0';
+
+    // look for next substring
+    int next = found + (int)j;
+    while (next < (int)size && buf[next] == 0)
+        next++;
+
+    if (next < (int)size && isalnum(buf[next]))
+    {
+        size_t k = j;
+        if (k < fw_id_size - 1)
+            fw_id[k++] = '_';
+
+        for (; k < fw_id_size - 1 && next < (int)size; k++, next++)
+        {
+            uint8_t c = buf[next];
+            if (c == 0 || c == '\n' || c == '\r')
+                break;
+            fw_id[k] = (char)c;
+        }
+        fw_id[k] = '\0';
+    }
+
+    return 0;
 }

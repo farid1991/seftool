@@ -45,14 +45,24 @@ endif()
 
 if(WIN32)
     add_custom_command(TARGET seftool POST_BUILD
+        # Copy source directories into the build tree
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/loader
             ${CMAKE_BINARY_DIR}/loader
+
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/rest
+            ${CMAKE_BINARY_DIR}/rest
     )
 else()
     add_custom_command(TARGET seftool POST_BUILD
+        # Create symlinks from build tree to source directories
         COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_SOURCE_DIR}/loader
             ${CMAKE_BINARY_DIR}/loader
+
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${CMAKE_SOURCE_DIR}/rest
+            ${CMAKE_BINARY_DIR}/rest
     )
 endif()

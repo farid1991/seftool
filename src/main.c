@@ -26,9 +26,6 @@
 #include "action.h"
 
 int loader_type = 0;
-int skip_cmd = 0;
-int skiperrors = 0;
-int is_z1010 = 0;
 
 static int create_backup_dir(const char *path)
 {
@@ -235,7 +232,23 @@ int erom_get_info(struct sp_port *port, struct phone_info *phone)
         return 0;
 
     uint8_t resp[128];
-    if (phone->chip_id != PNX5230) // --- IC10 (Certificate) ---
+    if (phone->chip_id == PNX5230) // --- ICO0 (OTP) ---
+    {
+        const uint8_t cmd_ic10[] = "ICO0";
+        if (serial_write(port, cmd_ic10, sizeof(cmd_ic10) - 1) < 0)
+            return -1;
+
+        if (sp_blocking_read(port, resp, sizeof(resp), TIMEOUT) <= 0)
+            return -1;
+
+        phone->otp_status = resp[2];
+        phone->otp_locked = resp[3];
+        phone->otp_cid = (resp[5] << 8) | resp[4];
+        phone->otp_paf = resp[6];
+        memcpy(phone->otp_imei, resp + 7, 14);
+        phone->otp_imei[14] = '\0';
+    }
+    else // --- IC10 (Certificate) ---
     {
         const uint8_t cmd_ic10[] = "IC10";
         if (serial_write(port, cmd_ic10, sizeof(cmd_ic10) - 1) < 0)
@@ -282,23 +295,34 @@ int erom_get_info(struct sp_port *port, struct phone_info *phone)
     printf("PHONE DOMAIN: %s\n", color_get_state(phone->erom_color));
     printf("PHONE CID: %02d\n\n", phone->erom_cid);
 
+    if (phone->chip_id == PNX5230)
+    {
+        printf("OTP: LOCKED:%d CID:%d PAF:%d IMEI:%s\n",
+               phone->otp_locked,
+               phone->otp_cid,
+               phone->otp_paf,
+               phone->otp_imei);
+    }
+
     return 0;
 }
 
 static void print_usage(const char *progname)
 {
-    printf("Usage: %s -p <port> [-b <baudrate>] -a <identify|unlock>\n", progname);
-    printf("\nOptions:\n");
-    printf("  -p, --port <device>     Serial port device (e.g. /dev/ttyUSB0 or COM3)\n");
-    printf("  -b, --baudrate <rate>   Baudrate (default 115200)\n");
+    printf("Usage: %s -p <port> -b <baud> -a <action> [options]\n\n", progname);
+    printf("  -p, --port <name>       Serial port name (e.g. COM2, /dev/ttyUSB0)\n");
+    printf("  -b, --baud <rate>       Baudrate (default: 115200)\n");
     printf("  -a, --action <action>   Action:\n");
     printf("                          identify\n");
     printf("                          flash <main> xor <fs>\n");
-    printf("                          start <addr> size <bytes> OR block <count>\n");
+    printf("                          read-flash start <addr> size <bytes> OR block <count>\n");
+    printf("                            [save-as-babe]\n");
     printf("                          read-gdfs\n");
     printf("                          write-gdfs <filename>\n");
     printf("                          write-script <filename>\n");
     printf("                          unlock <usercode|simlock>\n");
+    printf("\nGlobal options:\n");
+    printf("    --anycid              Ignore CID restrictions (DB2012/DB2020/PNX5230)\n");
     printf("  -h, --help              Show this help message\n");
 }
 
@@ -316,6 +340,10 @@ int main(int argc, char **argv)
     uint32_t dump_addr = 0;
     uint32_t dump_size = 0;
 
+    int anycid = 0;
+    int save_as_babe = 0;
+
+    /* parse args */
     for (int i = 1; i < argc; i++)
     {
         if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--port") == 0)
@@ -385,6 +413,10 @@ int main(int argc, char **argv)
                         int blocks = atoi(argv[++i]);
                         dump_size = blocks * BLOCK_SIZE;
                     }
+                    else if (strcmp(arg, "save-as-babe") == 0)
+                    {
+                        save_as_babe = 1;
+                    }
                     else
                     {
                         fprintf(stderr, "Error: read-flash requires start <addr> and (size <bytes> | block <count>)\n");
@@ -446,6 +478,10 @@ int main(int argc, char **argv)
             print_usage(argv[0]);
             return 0;
         }
+        else if (strcmp(argv[i], "--anycid") == 0)
+        {
+            anycid = 1;
+        }
         else
         {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
@@ -460,49 +496,59 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (strcmp(action, "identify") != 0 &&
-        strcmp(action, "flash") != 0 &&
-        strcmp(action, "read-flash") != 0 &&
-        strcmp(action, "read-gdfs") != 0 &&
-        strcmp(action, "write-gdfs") != 0 &&
-        strcmp(action, "write-script") != 0 &&
-        strcmp(action, "unlock") != 0)
+    action_t act = action_from_string(action);
+
+    if (act == ACT_NONE)
     {
-        fprintf(stderr, "Error: available action 'identify' | 'unlock' | 'flash' | 'read-flash' | 'read-gdfs'\n");
+        print_usage(argv[0]);
         return 1;
     }
 
-    if (strcmp(action, "identify") == 0 ||
-        strcmp(action, "read-gdfs") == 0 ||
-        strcmp(action, "write-gdfs") == 0 ||
-        strcmp(action, "read-flash") == 0)
+    /* create backup for a set of actions */
+    switch (act)
     {
+    case ACT_IDENTIFY:
+    case ACT_READ_GDFS:
+    case ACT_WRITE_GDFS:
+    case ACT_READ_FLASH:
         if (create_backup_dir("backup") != 0)
             return 1;
+        break;
+    default:
+        break;
     }
 
+    /* print parsed args */
     printf("Port: %s\n", port_name);
     printf("Baudrate: %d\n", baudrate);
     printf("Action: %s ", action);
-    if (strcmp(action, "read-flash") == 0)
+
+    switch (act)
     {
-        // round up size to nearest multiple of BLOCK_SIZE
+    case ACT_READ_FLASH:
         if (dump_size % BLOCK_SIZE != 0)
         {
-            int aligned_size = (dump_size + BLOCK_SIZE - 1) & ~(BLOCK_SIZE - 1);
+            uint32_t aligned_size = (dump_size + BLOCK_SIZE - 1) & ~(BLOCK_SIZE - 1);
             printf("\nsize 0x%X adjusted to aligned size 0x%X\n", dump_size, aligned_size);
             dump_size = aligned_size;
         }
         printf("addr: 0x%X, size: 0x%X (%u) bytes\n", dump_addr, dump_size, dump_size);
-    }
-    else if (strcmp(action, "unlock") == 0)
+        if (save_as_babe)
+            printf("Output saved as BABE format\n");
+        break;
+    case ACT_UNLOCK:
         printf("%s\n", unlock_target);
-    else if (strcmp(action, "write-gdfs") == 0)
+        break;
+    case ACT_WRITE_GDFS:
         printf("%s\n", gdfs_filename);
-    else if (strcmp(action, "write-script") == 0)
+        break;
+    case ACT_WRITE_SCRIPT:
         printf("%s\n", script_filename);
-    else
+        break;
+    default:
         printf("\n");
+        break;
+    }
 
     printf("\n");
 
@@ -527,13 +573,15 @@ int main(int argc, char **argv)
     if (set_speed(port, &phone, baudrate) != 0)
         goto exit_error;
 
-    if (strcmp(action, "identify") == 0)
+    /* execute action */
+    switch (act)
     {
+    case ACT_IDENTIFY:
         if (action_identify(port, &phone) != 0)
             goto exit_error;
-    }
-    else if (strcmp(action, "unlock") == 0)
-    {
+        break;
+
+    case ACT_UNLOCK:
         if (strcmp(unlock_target, "usercode") == 0)
         {
             if (action_unlock_usercode(port, &phone) != 0)
@@ -545,31 +593,39 @@ int main(int argc, char **argv)
             //     goto exit_error;
             printf("Not implemented (yet)\n");
         }
-    }
-    else if (strcmp(action, "flash") == 0)
-    {
+        break;
+
+    case ACT_FLASH:
         if (action_flash_fw(port, &phone, flash_mainfw, flash_fsfw) != 0)
             goto exit_error;
-    }
-    else if (strcmp(action, "read-flash") == 0)
-    {
+        break;
+
+    case ACT_READ_FLASH:
+        phone.anycid = anycid;
+        phone.save_as_babe = save_as_babe;
         if (action_read_flash(port, &phone, dump_addr, dump_size) != 0)
             goto exit_error;
-    }
-    else if (strcmp(action, "read-gdfs") == 0)
-    {
+        break;
+
+    case ACT_READ_GDFS:
         if (action_backup_gdfs(port, &phone) != 0)
             goto exit_error;
-    }
-    else if (strcmp(action, "write-gdfs") == 0)
-    {
+        break;
+
+    case ACT_WRITE_GDFS:
         if (action_restore_gdfs(port, &phone, gdfs_filename) != 0)
             goto exit_error;
-    }
-    else if (strcmp(action, "write-script") == 0)
-    {
+        break;
+
+    case ACT_WRITE_SCRIPT:
         if (action_exec_script(port, &phone, script_filename) != 0)
             goto exit_error;
+        break;
+
+    case ACT_NONE:
+    default:
+        fprintf(stderr, "Error: unknown action '%s'\n", action ? action : "(null)");
+        goto exit_error;
     }
 
     if (loader_shutdown(port) != 0)

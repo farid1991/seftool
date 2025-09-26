@@ -54,8 +54,8 @@ enum
     COLOR_UNKNOWN = 0x4E4B4E55, //'UNKN' //?????????
 };
 
-int babe_check(uint8_t *file, uint32_t size, int checktype);
-int is_babe(uint8_t *addr, uint32_t size);
+int babe_check(uint8_t *file, size_t size, int checktype);
+int is_babe(uint8_t *addr, size_t size);
 
 typedef enum
 {

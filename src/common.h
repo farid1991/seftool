@@ -20,9 +20,6 @@
 #define BLOCK_SIZE 0x10000
 
 extern int loader_type;
-extern int skip_cmd;
-extern int skiperrors;
-extern int is_z1010;
 
 struct phone_info
 {
@@ -32,6 +29,8 @@ struct phone_info
     uint8_t protocol_minor;
     uint8_t new_security;
     char phone_name[8];
+    char fw_version[64];
+    int is_z1010;
 
     // EROM
     int erom_color;
@@ -46,6 +45,12 @@ struct phone_info
     uint16_t otp_cid;
     uint8_t otp_paf;
     char otp_imei[15];
+
+    // state
+    int skip_cmd;
+    int skiperrors;
+    int anycid;
+    int save_as_babe;
 };
 
 enum color_e
@@ -68,9 +73,11 @@ int isbabe(uint8_t *addr, uint32_t size);
 
 void decode_bcd(const uint8_t *in, int len, char *out, size_t out_size);
 
-const char* get_flash_vendor(uint16_t flashid);
+const char *get_flash_vendor(uint16_t flashid);
 const char *get_chipset_name(uint16_t chip_id);
 const char *color_get_state(int color_code);
 const char *color_get_name(int color_code);
+
+int scan_fw_version(uint8_t *buf, size_t size, char *fw_id, size_t fw_id_size);
 
 #endif // common_h

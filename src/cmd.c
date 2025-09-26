@@ -214,7 +214,11 @@ int cmd_decode_packet(const uint8_t *buf, int size, struct packetdata_t *out)
 	{
 		return cmd_decode_packet_noack(buf, size, out);
 	}
-	else if (buf[0] == 0 && buf[1] == SERIAL_HDR89) // CSLOADER
+	else if (buf[0] == 0 && buf[1] == SERIAL_HDR89) // some CSLOADER
+	{
+		return cmd_decode_packet_noack(buf + 1, size - 1, out);
+	}
+	else if (buf[0] == 0x3E && buf[1] == SERIAL_HDR89) // DB2010_RESPIN_PRODLOADER_SETOOL2 & DB2020_PRELOADER_FOR_SETOOL2
 	{
 		return cmd_decode_packet_noack(buf + 1, size - 1, out);
 	}

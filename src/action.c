@@ -18,6 +18,28 @@
 #include "loader.h"
 #include "gdfs.h"
 #include "serial.h"
+#include "action.h"
+
+action_t action_from_string(const char *a)
+{
+    if (!a)
+        return ACT_NONE;
+    if (strcmp(a, "identify") == 0)
+        return ACT_IDENTIFY;
+    if (strcmp(a, "flash") == 0)
+        return ACT_FLASH;
+    if (strcmp(a, "read-flash") == 0)
+        return ACT_READ_FLASH;
+    if (strcmp(a, "read-gdfs") == 0)
+        return ACT_READ_GDFS;
+    if (strcmp(a, "write-gdfs") == 0)
+        return ACT_WRITE_GDFS;
+    if (strcmp(a, "write-script") == 0)
+        return ACT_WRITE_SCRIPT;
+    if (strcmp(a, "unlock") == 0)
+        return ACT_UNLOCK;
+    return ACT_NONE;
+}
 
 int unlock_usercode_db2020_pnx5230(struct sp_port *port, struct phone_info *phone)
 {
@@ -68,7 +90,7 @@ int action_unlock_usercode(struct sp_port *port, struct phone_info *phone)
 
 // Return number of bytes received, or -1 on error
 int pnx_send_packet(struct sp_port *port,
-                    uint8_t block, uint8_t lsb, uint8_t msb,
+                    uint8_t block, uint8_t msb, uint8_t lsb,
                     uint8_t *resp, size_t resp_max)
 {
     uint8_t cmd_buf[7] = {'I', 'C', 'G', '1', block, lsb, msb};
@@ -101,20 +123,74 @@ int pnx_send_packet(struct sp_port *port,
     return datasize;
 }
 
-int action_identify_pnx(struct sp_port *port, struct gdfs_data_t *gdfs)
+int dump_sec_units_pnx(struct sp_port *port, const char *backup_name)
+{
+    FILE *f = fopen(backup_name, "a");
+    if (!f)
+    {
+        fprintf(stderr, "Cannot create %s\n", backup_name);
+        return -1;
+    }
+
+    uint8_t resp[0x800];
+    int len;
+
+    /* list of blocks to dump (block, msb, lsb, skip_first) */
+    struct
+    {
+        uint8_t block;
+        uint8_t msb;
+        uint8_t lsb;
+    } blocks[] = {
+        {0x00, 0x00, 0x06}, /* GD_COPS_Dynamic1Variable */
+        {0x00, 0x00, 0x0E}, /* GD_COPS_Dynamic2Variable */
+        {0x00, 0x00, 0x13}, /* GD_COPS_StaticVariable */
+        {0x00, 0x00, 0x18}, /* GD_COPS_ProtectedCustomerSettings */
+        {0x00, 0x00, 0xAA}, /* GD_Protected_PlatformSettings */
+        {0x01, 0x08, 0x51}  /* block 0x01 unit 0x0851 */
+    };
+
+    for (size_t i = 0; i < sizeof(blocks) / sizeof(blocks[0]); ++i)
+    {
+        len = pnx_send_packet(port,
+                              blocks[i].block,
+                              blocks[i].msb,
+                              blocks[i].lsb,
+                              resp, sizeof(resp));
+        if (len < 0)
+        {
+            fclose(f);
+            return -1;
+        }
+
+        fprintf(f, "gdfswrite:%04X%02X%02X",
+                blocks[i].block, blocks[i].msb, blocks[i].lsb);
+
+        for (int j = 0; j < len; ++j)
+            fprintf(f, "%02X", resp[j]);
+
+        fprintf(f, "\n");
+    }
+
+    fclose(f);
+    printf("SECURITY UNITS BACKUP CREATED. %s\n", backup_name);
+    return 0;
+}
+
+int action_identify_pnx(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs)
 {
     printf("Phone Info (from GDFS):\n");
 
     // Phone name
     uint8_t resp[0x800];
-    int len = pnx_send_packet(port, 0x02, 0xBB, 0x0D, resp, sizeof(resp));
+    int len = pnx_send_packet(port, 0x02, 0x0D, 0xBB, resp, sizeof(resp));
     if (len < 0)
         return -1;
     wcstombs(gdfs->phone_name, (wchar_t *)resp, len);
     printf("Model: %s\n", gdfs->phone_name);
 
     // Brand
-    len = pnx_send_packet(port, 0x02, 0xE5, 0x0D, resp, sizeof(resp));
+    len = pnx_send_packet(port, 0x02, 0x0D, 0xE5, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->brand, (char *)resp, len);
@@ -122,7 +198,7 @@ int action_identify_pnx(struct sp_port *port, struct gdfs_data_t *gdfs)
     printf("Brand: %s\n", gdfs->brand);
 
     // CXC article
-    len = pnx_send_packet(port, 0x02, 0x15, 0x0E, resp, sizeof(resp));
+    len = pnx_send_packet(port, 0x02, 0x0E, 0x15, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->cxc_article, (char *)resp, len);
@@ -130,7 +206,7 @@ int action_identify_pnx(struct sp_port *port, struct gdfs_data_t *gdfs)
     printf("MAPP CXC article: %s\n", gdfs->cxc_article);
 
     // CXC version
-    len = pnx_send_packet(port, 0x02, 0x16, 0x0E, resp, sizeof(resp));
+    len = pnx_send_packet(port, 0x02, 0x0E, 0x16, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->cxc_version, (char *)resp, len);
@@ -138,7 +214,7 @@ int action_identify_pnx(struct sp_port *port, struct gdfs_data_t *gdfs)
     printf("MAPP CXC version: %s\n", gdfs->cxc_version);
 
     // Language package
-    len = pnx_send_packet(port, 0x02, 0xE7, 0x0D, resp, sizeof(resp));
+    len = pnx_send_packet(port, 0x02, 0x0D, 0xE7, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->langpack, (char *)resp, len);
@@ -146,7 +222,7 @@ int action_identify_pnx(struct sp_port *port, struct gdfs_data_t *gdfs)
     printf("Language package: %s\n", gdfs->langpack);
 
     // CDA article
-    len = pnx_send_packet(port, 0x02, 0xE8, 0x0D, resp, sizeof(resp));
+    len = pnx_send_packet(port, 0x02, 0x0D, 0xE8, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->cda_article, (char *)resp, len);
@@ -154,7 +230,7 @@ int action_identify_pnx(struct sp_port *port, struct gdfs_data_t *gdfs)
     printf("CDA article: %s\n", gdfs->cda_article);
 
     // CDA revision
-    len = pnx_send_packet(port, 0x02, 0xE9, 0x0D, resp, sizeof(resp));
+    len = pnx_send_packet(port, 0x02, 0x0D, 0xE9, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->cda_revision, (char *)resp, len);
@@ -162,7 +238,7 @@ int action_identify_pnx(struct sp_port *port, struct gdfs_data_t *gdfs)
     printf("CDA revision: %s\n", gdfs->cda_revision);
 
     // Default article
-    len = pnx_send_packet(port, 0x02, 0xEA, 0x0D, resp, sizeof(resp));
+    len = pnx_send_packet(port, 0x02, 0x0D, 0xEA, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->default_article, (char *)resp, len);
@@ -170,7 +246,7 @@ int action_identify_pnx(struct sp_port *port, struct gdfs_data_t *gdfs)
     printf("Default article: %s\n", gdfs->default_article);
 
     // Default version
-    len = pnx_send_packet(port, 0x02, 0xEB, 0x0D, resp, sizeof(resp));
+    len = pnx_send_packet(port, 0x02, 0x0D, 0xEB, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->default_version, (char *)resp, len);
@@ -178,12 +254,19 @@ int action_identify_pnx(struct sp_port *port, struct gdfs_data_t *gdfs)
     printf("Default version: %s\n", gdfs->default_version);
 
     // SIMLOCK (binary data)
-    len = pnx_send_packet(port, 0x00, 0x06, 0x00, resp, sizeof(resp));
+    len = pnx_send_packet(port, 0x00, 0x00, 0x06, resp, sizeof(resp));
     if (len < 0)
         return -1;
     gdfs_parse_simlockdata(gdfs, resp);
     printf("%s\n", gdfs->locked ? "LOCKED" : "SIMLOCKS NOT DETECTED");
     printf("Provider: %s-%s\n\n", gdfs->mcc, gdfs->mnc);
+
+    char backup_path[512];
+    snprintf(backup_path, sizeof(backup_path), "./backup/secunits_%s_%s.txt", gdfs->phone_name, phone->otp_imei);
+    if (access(backup_path, 0) != 0)
+    {
+        dump_sec_units_pnx(port, backup_path);
+    }
 
     return 0;
 }
@@ -193,7 +276,7 @@ int action_identify(struct sp_port *port, struct phone_info *phone)
     struct gdfs_data_t gdfs = {0};
 
     if (phone->chip_id == PNX5230)
-        return action_identify_pnx(port, &gdfs);
+        return action_identify_pnx(port, phone, &gdfs);
 
     if (loader_enter_flashmode(port, phone) != 0)
         return -1;
@@ -274,6 +357,12 @@ int action_read_flash(struct sp_port *port, struct phone_info *phone, uint32_t a
 {
     if (loader_send_bflash_ldr(port, phone) != 0)
         return -1;
+
+    if (phone->anycid == 1)
+    {
+        if (flash_restore_boot_area(port, phone) != 0)
+            return -1;
+    }
 
     if (flash_read(port, phone, addr, size) != 0)
         return -1;

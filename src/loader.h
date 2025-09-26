@@ -93,6 +93,7 @@
 #define DB2010_PILOADER_RED_CID00_R2AB "./loader/db2010_cid00_prodid_r2ab.bin"
 #define DB2010_PILOADER_RED_CID00_P3L "./loader/db2010_cid00_prodid_p3l.bin"
 #define DB2010_PILOADER_RED_CID00_P4D "./loader/db2010_cid00_prodid_p4d.bin"
+#define DB2010_RESPIN_ID_LOADER_SETOOL2 "./loader/DB2010_RESPIN_ID_LOADER_SETOOL2.bin"
 #define DB2010_RESPIN_PRODLOADER_SETOOL2 "./loader/DB2010_RESPIN_PRODLOADER_SETOOL2.bin"
 #define DB2010_PILOADER_BROWN_CID49_SETOOL "./loader/db2010_cid49brown_prodid_setool.bin"
 #define DB2010_PILOADER_BROWN_CID49_R1A002 "./loader/db2010_cid49brown_prodid_r1a002.bin"
@@ -100,6 +101,7 @@
 #define DB2020_PILOADER_RED_CID01_P3J "./loader/db2020_cid01_prodid_p3j.bin"
 #define DB2020_PILOADER_RED_CID01_P3M "./loader/db2020_cid01_prodid_p3m.bin"
 #define DB2020_PILOADER_BROWN_CID49_SETOOL "./loader/db2020_cid49brown_prodloader_setool2.bin"
+#define DB2020_PRELOADER_FOR_SETOOL2 "./loader/DB2020_PRELOADER_FOR_SETOOL2.bin"
 #define DB2020_LOADER_FOR_SETOOL2 "./loader/DB2020_LOADER_FOR_SETOOL2.bin"
 
 // PATCHED loader from den_po =)

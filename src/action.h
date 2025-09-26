@@ -7,13 +7,15 @@ typedef enum
 {
     ACT_NONE,
     ACT_IDENTIFY,
-    ACT_UNLOCK_USERCODE,
-    ACT_UNLOCK_SIMLOCK,
+    ACT_UNLOCK,
     ACT_FLASH,
     ACT_READ_FLASH,
     ACT_READ_GDFS,
-    ACT_WRITE_GDFS
+    ACT_WRITE_GDFS,
+    ACT_WRITE_SCRIPT
 } action_t;
+
+action_t action_from_string(const char *a);
 
 int action_unlock_usercode(struct sp_port *port, struct phone_info *phone);
 int action_identify(struct sp_port *port, struct phone_info *phone);

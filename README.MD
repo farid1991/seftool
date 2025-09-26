@@ -51,19 +51,23 @@ cmake --build . --config Release
 
 ## Usage
 ```sh
-Usage: seftool -p <port> [-b <baudrate>] -a <action>
+Usage: ./seftool -p <port> [-b <baudrate>] -a <action>
 ```
 ```
 Options:
-  -p, --port <device>     Serial port device (e.g. /dev/ttyUSB0 or COM3)
-  -b, --baudrate <rate>   Baudrate (default 115200)
+  -p, --port <name>       Serial port name (e.g. COM2, /dev/ttyUSB0)
+  -b, --baud <rate>       Baudrate (default: 115200)
   -a, --action <action>   Action:
                           identify
-                          flash <main> <fs>
-                          start <addr> size <bytes> OR block <count>
+                          flash <main> xor <fs>
+                          read-flash start <addr> size <bytes> OR block <count>
+                            [save-as-babe]
                           read-gdfs
                           write-gdfs <filename>
+                          write-script <filename>
                           unlock <usercode|simlock>
+Global options:
+    --anycid              Ignore CID restrictions (DB2012/DB2020/PNX5230)
   -h, --help              Show this help message
 ```
 
@@ -71,16 +75,16 @@ Options:
 
 ## Supported devices
 
-| Action         | DB2000           | DB201x              | DB2020  | PNX5230        |
-|:---------------|:----------------:|:-------------------:|:-------:|:--------------:|
-| identify       | OK               | OK                  | OK      | OK             |
-| flash          | OK (except Z1010)| OK                  | OK      | OK             |
-| read-flash     | CID29&36,BROWN49 | CID29&36,BROWN49&51 | BROWN49 | anycid exploit |
-| read-gdfs      | OK               | OK                  | OK      | OK             |
-| write-gdfs     | OK               | OK                  | OK      | OK             |
-| write-script   | OK               | OK                  | OK      | OK             |
-| unlock-usercode| OK               | OK                  | OK      | OK             |
-| unlock-simlock | TODO             | TODO                | TODO    | TODO           |
+| Action         | DB2000           | DB201x                | DB2020         | PNX5230 |
+|:---------------|:----------------:|:---------------------:|:--------------:|:-------:|
+| identify       | OK               | OK                    | OK             | OK      |
+| flash          | OK (except Z1010)| OK                    | OK             | OK      |
+| read-flash     | CID29&36,BROWN49 | CID29&36+BROWN+ANYCID | BROWN49+ANYCID | ANYCID  |
+| read-gdfs      | OK               | OK                    | OK             | OK      |
+| write-gdfs     | OK               | OK                    | OK             | OK      |
+| write-script   | OK               | OK                    | OK             | OK      |
+| unlock-usercode| OK               | OK                    | OK             | OK      |
+| unlock-simlock | TODO             | TODO                  | TODO           | TODO    |
 
 
 ---
@@ -154,9 +158,19 @@ $ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash fs.fbn
 
 ### Read flash (read-flash):
 
-#### Read 512 KB from flash at 0x44000000:
+#### Read 512 KB starting at 0x44000000 and save as RAW (.bin):
 ```sh
 $ ./seftool -p COM2 -b 921600 -a read-flash start 0x44000000 size 0x80000
+```
+
+#### Read 0x10 blocks starting at 0x20100000 with anycid:
+```sh
+$ ./seftool -p COM2 -b 921600 -a read-flash start 0x20100000 block 0x10 --anycid
+```
+
+#### Read 0x40000 bytes starting at 0x20100000 and save as BABE (.ssw):
+```sh
+seftool -p COM2 -b 921600 -a read-flash start 0x20100000 size 0x40000 save-as-babe --anycid
 ```
 
 ### Backup GDFS (read-gdfs):
@@ -194,18 +208,15 @@ Using `seftool` may permanently damage your device if used incorrectly.
 
 ## Notes
 * Do identify first before other operation
-
 * Backups are automatically saved in a backup/ directory when using identify, read-gdfs, write-gdfs, or read-flash.
-
 * Sim unlock is not implemented yet.
-
 * Use a stable power supply(battery 50%++) and reliable serial connection when flashing to avoid bricking the phone.
-
 * **DB2000** has max **460800** baudrate.
-
-* Z1010 flash MAIN is incorrect.
-
+* **Z1010** flash MAIN is incorrect.
 * **PNX5230** read flash use `anycid` method, restore firmware is not implemented yet.
+* **ANYCID** only used for "read-flash" right now.
+* Restore firmware files are included in `./rest` (packaged alongside the executable).  
+  `.rest` files are generated with **mkrest2** by **den_po**.
 ---
 
 ## TODO
