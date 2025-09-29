@@ -49,7 +49,9 @@
 #define DB2020_CSLOADER_RED_CID53_R3A013 "./loader/db2020_cid53red_cs_r3a013.bin"
 
 #define PNX5230_CSLOADER_RED_CID51_R3A015 "./loader/PNX5230_cid51red_cs_r3a015.bin"
+#define PNX5230_CSLOADER_RED_CID51_R3A016 "./loader/PNX5230_cid51red_cs_r3a016.bin"
 #define PNX5230_CSLOADER_RED_CID52_R3A015 "./loader/PNX5230_cid52red_cs_r3a015.bin"
+#define PNX5230_CSLOADER_RED_CID52_R3A016 "./loader/PNX5230_cid52red_cs_r3a016.bin"
 #define PNX5230_CSLOADER_RED_CID53_R3A016 "./loader/pnx5230_cid53red_cs_r3a016.bin"
 
 // FLASH LOADERS
@@ -78,7 +80,9 @@
 #define DB2020_FLLOADER_RED_CID53_R2A015 "./loader/db2020_cid53red_flash_r2a015.bin"
 
 #define PNX5230_FLLOADER_RED_CID51_R2A016 "./loader/PNX5230_cid51red_flash_r2a016.bin"
+#define PNX5230_FLLOADER_RED_CID51_R2A022 "./loader/PNX5230_cid51red_flash_r2a022.bin"
 #define PNX5230_FLLOADER_RED_CID52_R2A019 "./loader/PNX5230_cid52red_flash_r2a019.bin"
+#define PNX5230_FLLOADER_RED_CID52_R2A022 "./loader/PNX5230_cid52red_flash_r2a022.bin"
 #define PNX5230_FLLOADER_RED_CID53_R2A022 "./loader/pnx5230_cid53red_flash_r2a022.bin"
 
 // PRODUCT_ID LOADERS
@@ -113,6 +117,8 @@
 #define DB2010_CSLOADER_R2C_DEN_PO "./loader/2010_cs_R2C"
 #define DB2000_CSLOADER_R4B_SETOOL "./loader/2000_csold_R4B_setool"
 #define DB2020_CSLOADER_R3A006_SETOOL "./loader/2020_cs_R3A006"
+#define DB2020_PROLOGUE "./loader/2020_prologue"
+#define DB2020_PRODUCTION "./loader/2020_f_R2A005"
 #define PNX5320_PROLOGUE "./loader/pnx5230_prologue"
 #define PNX5230_PRODUCTION "./loader/PNX5230_PRODUCTION"
 
@@ -125,9 +131,6 @@ enum ldr_type_e
     LDR_MEM_PATCHER,
     LDR_UNKNOWN,
 };
-
-int loader_read_gdfs_var(struct sp_port *port, struct gdfs_data_t *gdfs, int gd_index,
-                         uint8_t block, uint8_t lsb, uint8_t msb);
 
 int loader_send_binary_cmd3e(struct sp_port *port, const char *loader_name);
 int loader_send_binary(struct sp_port *port, struct phone_info *phone, const char *loader_name);

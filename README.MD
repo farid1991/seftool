@@ -10,7 +10,7 @@
 # SEFTool / SE Flash Tool
 
 A command-line utility for flashing, unlocking, and managing Sony Ericsson phones (A1 platform) over a serial connection.  
-Supports firmware flashing, GDFS (phone data) backup/restore, flash reading, and basic unlock operations.
+Supports firmware flashing and patching, GDFS (phone data) backup/restore, flash reading, and basic unlock operations.
 
 ---
 
@@ -64,27 +64,31 @@ Options:
                             [save-as-babe]
                           read-gdfs
                           write-gdfs <filename>
-                          write-script <filename>
+                          write-script <file1> [file2 ...]
                           unlock <usercode|simlock>
+                          convert babe2raw <filename>
+                          convert raw2babe <filename> <addr>
 Global options:
     --anycid              Ignore CID restrictions (DB2012/DB2020/PNX5230)
   -h, --help              Show this help message
+
 ```
 
 ---
 
 ## Supported devices
 
-| Action         | DB2000           | DB201x                | DB2020         | PNX5230 |
-|:---------------|:----------------:|:---------------------:|:--------------:|:-------:|
-| identify       | OK               | OK                    | OK             | OK      |
-| flash          | OK (except Z1010)| OK                    | OK             | OK      |
-| read-flash     | CID29&36,BROWN49 | CID29&36+BROWN+ANYCID | BROWN49+ANYCID | ANYCID  |
-| read-gdfs      | OK               | OK                    | OK             | OK      |
-| write-gdfs     | OK               | OK                    | OK             | OK      |
-| write-script   | OK               | OK                    | OK             | OK      |
-| unlock-usercode| OK               | OK                    | OK             | OK      |
-| unlock-simlock | TODO             | TODO                  | TODO           | TODO    |
+| Action             | DB2000           | DB201x                | DB2020         | PNX5230 |
+|:-------------------|:----------------:|:---------------------:|:--------------:|:-------:|
+| identify           | OK               | OK                    | OK             | OK      |
+| flash              | OK (except Z1010)| OK                    | OK             | OK      |
+| read-flash         | CID29&36,BROWN49 | CID29&36+BROWN+ANYCID | BROWN49+ANYCID | ANYCID  |
+| read-gdfs          | OK               | OK                    | OK             | OK      |
+| write-gdfs         | OK               | OK                    | OK             | OK      |
+| write-script[gdfs] | OK               | OK                    | OK             | OK      |
+| write-script[vkp]  | CID29&36,BROWN49 | CID29&36+BROWN+ANYCID | BROWN49+ANYCID | ANYCID  |
+| unlock-usercode    | OK               | OK                    | OK             | OK      |
+| unlock-simlock     | TODO             | TODO                  | TODO           | TODO    |
 
 
 ---
@@ -188,9 +192,29 @@ $ ./seftool -p COM2 -b 921600 -a write-gdfs backup/gdfs.bin
 $ ./seftool -p COM2 -b 921600 -a write-script secsunitbackup.txt
 ```
 
+### Write VKP patch (write-script):
+```sh
+$ ./seftool -p COM2 -b 921600 -a disable_setup_wizard.vkp no_simcard.vkp
+```
+
+### Write VKP patch with anycid exploit (write-script):
+```sh
+$ ./seftool -p COM2 -b 921600 -a disable_setup_wizard.vkp no_simcard.vkp --anycid
+```
+
 ### Unlock usercode:
 ```sh
 $ ./seftool -p /dev/ttyUSB0 b 921600 -a unlock usercode
+```
+
+### Convert firmware(BABE format) to RAW binary:
+```sh
+$ ./seftool -a convert babe2raw Z310_R8BA024_prgCXC1250594_GENERIC_AL.PNX5230_CID53_RED.mbn
+```
+
+### Convert RAW binary to BABE format:
+```sh
+$ ./seftool -a convert raw2babe prgCXC1250594_GENERIC_AL.bin 0x20100000
 ```
 
 ---
@@ -222,8 +246,9 @@ Using `seftool` may permanently damage your device if used incorrectly.
 ## TODO
 1. CDA upload (flash customization).
 2. Complete operation for phone with CID16 and ~~CID29~~ (DB2000 & DB2010)
-3. VKP patching
-4. ...
+3. ~~VKP patching~~
+4. Break RSA RED49 DB2000 & DB2010
+5. ...
 
 ---
 

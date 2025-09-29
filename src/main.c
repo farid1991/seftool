@@ -214,7 +214,9 @@ int send_question_mark(struct sp_port *port, struct phone_info *phone)
     phone->protocol_minor = (resp[3] == 0xFF) ? 0 : resp[3];
     phone->new_security = (resp[4] == 0x01);
 
-    printf("Chip ID: %04X, Platform: %s\n", phone->chip_id, get_chipset_name(phone->chip_id));
+    printf("Chip ID: %04X%s, Platform: %s \n", phone->chip_id,
+           phone->new_security ? " [RESPIN]" : "",
+           get_chipset_name(phone->chip_id));
     printf("EMP Protocol: %02d.%02d\n", phone->protocol_major, phone->protocol_minor);
 
     if (phone->protocol_major != 3 || phone->protocol_minor != 1)
@@ -234,8 +236,8 @@ int erom_get_info(struct sp_port *port, struct phone_info *phone)
     uint8_t resp[128];
     if (phone->chip_id == PNX5230) // --- ICO0 (OTP) ---
     {
-        const uint8_t cmd_ic10[] = "ICO0";
-        if (serial_write(port, cmd_ic10, sizeof(cmd_ic10) - 1) < 0)
+        const uint8_t cmd_ico0[] = "ICO0";
+        if (serial_write(port, cmd_ico0, sizeof(cmd_ico0) - 1) < 0)
             return -1;
 
         if (sp_blocking_read(port, resp, sizeof(resp), TIMEOUT) <= 0)
@@ -319,8 +321,10 @@ static void print_usage(const char *progname)
     printf("                            [save-as-babe]\n");
     printf("                          read-gdfs\n");
     printf("                          write-gdfs <filename>\n");
-    printf("                          write-script <filename>\n");
+    printf("                          write-script <file1> [file2 ...]\n");
     printf("                          unlock <usercode|simlock>\n");
+    printf("                          convert babe2raw <filename>\n");
+    printf("                          convert raw2babe <filename> <addr>\n");
     printf("\nGlobal options:\n");
     printf("    --anycid              Ignore CID restrictions (DB2012/DB2020/PNX5230)\n");
     printf("  -h, --help              Show this help message\n");
@@ -333,12 +337,16 @@ int main(int argc, char **argv)
     const char *action = NULL;
     const char *unlock_target = NULL;
     const char *gdfs_filename = NULL;
-    const char *script_filename = NULL;
     const char *flash_mainfw = NULL;
     const char *flash_fsfw = NULL;
+    const char *cnv_filename = NULL;
+    const char *cnv_mode = NULL;
+    const char **script_filenames = NULL;
+    int script_count = 0;
 
     uint32_t dump_addr = 0;
     uint32_t dump_size = 0;
+    uint32_t mem_addr = 0;
 
     int anycid = 0;
     int save_as_babe = 0;
@@ -462,13 +470,64 @@ int main(int argc, char **argv)
             }
             else if (strcmp(action, "write-script") == 0)
             {
+                // Collect all remaining args until a '-' or end
+                int start = i + 1;
+                int count = 0;
+                while (start + count < argc && argv[start + count][0] != '-')
+                {
+                    count++;
+                }
+                if (count == 0)
+                {
+                    fprintf(stderr, "Error: write-script requires at least one <filename>\n");
+                    return 1;
+                }
+                script_filenames = (const char **)&argv[start]; // pointer into argv
+                script_count = count;
+                i = start + count - 1; // move index
+            }
+            else if (strcmp(action, "convert") == 0)
+            {
                 if (i + 1 < argc)
                 {
-                    script_filename = argv[++i];
+                    const char *mode = argv[++i];
+
+                    if (strcmp(mode, "raw2babe") == 0)
+                    {
+                        if (i + 2 < argc)
+                        {
+                            cnv_mode = mode;
+                            cnv_filename = argv[++i];
+                            mem_addr = strtoul(argv[++i], NULL, 0);
+                        }
+                        else
+                        {
+                            fprintf(stderr, "Error: convert raw2babe requires <filename> <addr>\n");
+                            return 1;
+                        }
+                    }
+                    else if (strcmp(mode, "babe2raw") == 0)
+                    {
+                        if (i + 1 < argc)
+                        {
+                            cnv_mode = mode;
+                            cnv_filename = argv[++i];
+                        }
+                        else
+                        {
+                            fprintf(stderr, "Error: convert babe2raw requires <filename>\n");
+                            return 1;
+                        }
+                    }
+                    else
+                    {
+                        fprintf(stderr, "Error: convert requires <raw2babe|babe2raw>\n");
+                        return 1;
+                    }
                 }
                 else
                 {
-                    fprintf(stderr, "Error: write-script requires <filename>\n");
+                    fprintf(stderr, "Error: convert requires <raw2babe|babe2raw> ...\n");
                     return 1;
                 }
             }
@@ -490,7 +549,7 @@ int main(int argc, char **argv)
         }
     }
 
-    if (!port_name || !action)
+    if (!action)
     {
         print_usage(argv[0]);
         return 1;
@@ -499,6 +558,20 @@ int main(int argc, char **argv)
     action_t act = action_from_string(action);
 
     if (act == ACT_NONE)
+    {
+        print_usage(argv[0]);
+        return 1;
+    }
+
+    /* convert does not need a port */
+    if (act == ACT_CONVERT)
+    {
+        printf("convert %s\n", cnv_mode);
+        return action_convert(cnv_mode, cnv_filename, mem_addr);
+    }
+
+    /* For all other actions, we need a port */
+    if (!port_name)
     {
         print_usage(argv[0]);
         return 1;
@@ -543,7 +616,9 @@ int main(int argc, char **argv)
         printf("%s\n", gdfs_filename);
         break;
     case ACT_WRITE_SCRIPT:
-        printf("%s\n", script_filename);
+        for (int i = 0; i < script_count; i++)
+            printf("%s ", script_filenames[i]);
+        printf("\n");
         break;
     default:
         printf("\n");
@@ -552,7 +627,7 @@ int main(int argc, char **argv)
 
     printf("\n");
 
-    // --- open port etc ---
+    /* open port etc */
     struct sp_port *port;
     if (sp_get_port_by_name(port_name, &port) != SP_OK)
     {
@@ -618,7 +693,8 @@ int main(int argc, char **argv)
         break;
 
     case ACT_WRITE_SCRIPT:
-        if (action_exec_script(port, &phone, script_filename) != 0)
+        phone.anycid = anycid;
+        if (action_exec_scripts(port, &phone, script_count, script_filenames) != 0)
             goto exit_error;
         break;
 

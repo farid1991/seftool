@@ -19,6 +19,7 @@
 #include "gdfs.h"
 #include "serial.h"
 #include "action.h"
+#include "vkp.h"
 
 action_t action_from_string(const char *a)
 {
@@ -38,6 +39,8 @@ action_t action_from_string(const char *a)
         return ACT_WRITE_SCRIPT;
     if (strcmp(a, "unlock") == 0)
         return ACT_UNLOCK;
+    if (strcmp(a, "convert") == 0)
+        return ACT_CONVERT;
     return ACT_NONE;
 }
 
@@ -152,10 +155,7 @@ int dump_sec_units_pnx(struct sp_port *port, const char *backup_name)
 
     for (size_t i = 0; i < sizeof(blocks) / sizeof(blocks[0]); ++i)
     {
-        len = pnx_send_packet(port,
-                              blocks[i].block,
-                              blocks[i].msb,
-                              blocks[i].lsb,
+        len = pnx_send_packet(port, blocks[i].block, blocks[i].msb, blocks[i].lsb,
                               resp, sizeof(resp));
         if (len < 0)
         {
@@ -384,23 +384,6 @@ int action_restore_gdfs(struct sp_port *port, struct phone_info *phone, const ch
     return 0;
 }
 
-int action_exec_script(struct sp_port *port, struct phone_info *phone, const char *inputfname)
-{
-    if (loader_send_csloader(port, phone) != 0)
-        return -1;
-
-    char script_name[512];
-    snprintf(script_name, sizeof(script_name), "./script_%s.txt", phone->otp_imei);
-
-    if (csloader_parse_gdfs_script(port, inputfname, script_name) != 0)
-        return -1;
-
-    if (gdfs_terminate_access(port) != 0)
-        return -1;
-
-    return 0;
-}
-
 int action_backup_gdfs(struct sp_port *port, struct phone_info *phone)
 {
     if (loader_send_csloader(port, phone) != 0)
@@ -411,6 +394,139 @@ int action_backup_gdfs(struct sp_port *port, struct phone_info *phone)
 
     if (gdfs_terminate_access(port) != 0)
         return -1;
+
+    return 0;
+}
+
+int action_exec_scripts(struct sp_port *port, struct phone_info *phone,
+                        int nfiles, const char **filenames)
+{
+    int rc = 0;
+    int has_vkp = 0;
+    int has_txt = 0;
+
+    // First pass: detect what we got
+    for (int i = 0; i < nfiles; i++)
+    {
+        const char *ext = strrchr(filenames[i], '.');
+        if (ext && strcasecmp(ext, ".vkp") == 0)
+            has_vkp = 1;
+        else
+            has_txt = 1;
+    }
+
+    if (has_vkp && has_txt)
+    {
+        fprintf(stderr, "Error: cannot mix VKP patches and GDFS scripts in one run.\n");
+        return 0;
+    }
+
+    if (has_vkp)
+    {
+        // --- Prepare bflash loader once ---
+        if (loader_send_bflash_ldr(port, phone) != 0)
+            return -1;
+
+        if (phone->anycid == 1)
+        {
+            if (flash_restore_boot_area(port, phone) != 0)
+                return -1;
+        }
+
+        int patched_count = 0;
+        int skipped_count = 0;
+
+        // --- Loop over VKP patches ---
+        for (int i = 0; i < nfiles; i++)
+        {
+            const char *fname = filenames[i];
+            vkp_patch_t patch;
+            vkp_patch_init(&patch);
+
+            if (vkp_load_file(fname, &patch) != 0)
+            {
+                fprintf(stderr, "Failed to parse VKP file: %s\n", fname);
+                vkp_patch_free(&patch);
+                rc = -1;
+                continue; // try next patch
+            }
+
+            printf("\n%s parsed successfully, %zu byte(s)\n",
+                   fname, patch.patch.count);
+
+            int vkp_rc = flash_vkp(port, fname, &patch, 0, phone->flashblocksize);
+            if (vkp_rc == FLASH_VKP_SKIP)
+            {
+                skipped_count++;
+                vkp_patch_free(&patch);
+                continue; // keep processing others
+            }
+            if (vkp_rc != FLASH_VKP_OK)
+            {
+                vkp_patch_free(&patch);
+                rc = -1;
+                break;
+            }
+            patched_count++;
+            vkp_patch_free(&patch);
+        }
+
+        printf("\nSummary: %d patched, %d skipped\n\n", patched_count, skipped_count);
+    }
+    else
+    {
+        // --- CSLOADER once ---
+        if (loader_send_csloader(port, phone) != 0)
+            return -1;
+
+        for (int i = 0; i < nfiles; i++)
+        {
+            const char *fname = filenames[i];
+            printf("Try execute gdfs script: %s\n", fname);
+
+            char script_name[512];
+            snprintf(script_name, sizeof(script_name),
+                     "./script_%s_%s.txt", phone->phone_name, phone->otp_imei);
+
+            if (csloader_parse_gdfs_script(port, fname, script_name) != 0)
+            {
+                rc = -1;
+                break;
+            }
+        }
+
+        if (rc == 0)
+        {
+            if (gdfs_terminate_access(port) != 0)
+                rc = -1;
+        }
+    }
+
+    return rc;
+}
+
+int action_convert(const char *cnv_mode, const char *cnv_filename, uint32_t mem_addr)
+{
+    char outname[256];
+
+    if (strcmp(cnv_mode, "raw2babe") == 0)
+    {
+        snprintf(outname, sizeof(outname), "%s.ssw", cnv_filename);
+        if (flash_cnv_raw_to_babe_file(cnv_filename, outname, mem_addr) != 0)
+        {
+            fprintf(stderr, "Error: failed to convert raw to babe\n");
+            return -1;
+        }
+    }
+    else if (strcmp(cnv_mode, "babe2raw") == 0)
+    {
+        snprintf(outname, sizeof(outname), "%s.bin", cnv_filename);
+        if (flash_cnv_babe_to_raw_file(cnv_filename, outname) != 0)
+        {
+            fprintf(stderr, "Error: failed to convert babe to raw\n");
+            return -1;
+        }
+    }
 
     return 0;
 }

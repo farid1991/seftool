@@ -17,8 +17,6 @@
 #define DB2020 0x9900
 #define PNX5230 0xD000
 
-#define BLOCK_SIZE 0x10000
-
 extern int loader_type;
 
 struct phone_info
@@ -38,6 +36,7 @@ struct phone_info
 
     // NAND
     int flash_id;
+    size_t flashblocksize;
 
     // OTP
     uint8_t otp_status;
@@ -47,6 +46,7 @@ struct phone_info
     char otp_imei[15];
 
     // state
+    int qhldr_sent;
     int skip_cmd;
     int skiperrors;
     int anycid;
@@ -68,8 +68,6 @@ uint16_t get_half(uint8_t *p); // 16-bit LE
 void set_half(uint8_t *p, uint16_t v);
 uint32_t get_word(uint8_t *p); // 32-bit LE
 void set_word(uint8_t *p, uint32_t v);
-
-int isbabe(uint8_t *addr, uint32_t size);
 
 void decode_bcd(const uint8_t *in, int len, char *out, size_t out_size);
 

@@ -142,20 +142,6 @@ const char *color_get_name(int color_code)
     }
 }
 
-int isbabe(uint8_t *addr, uint32_t size)
-{
-    if (size < 0x380)
-        return 0;
-
-    if (addr[0] != 0xBA || addr[1] != 0xBE)
-        return 0;
-
-    uint32_t v1 = get_word(addr + 0x228);
-    uint32_t v2 = get_word(addr + 0x2E8);
-
-    return (v1 + v2 + 0x380 == size);
-}
-
 int scan_fw_version(uint8_t *buf, size_t size, char *fw_id, size_t fw_id_size)
 {
     int found = -1;

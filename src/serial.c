@@ -7,7 +7,7 @@
 #include "serial.h"
 
 // --- Write helpers ---
-int serial_write(struct sp_port *port, const uint8_t *buf, int len)
+int serial_write(struct sp_port *port, const uint8_t *buf, size_t len)
 {
     int written = sp_blocking_write(port, buf, len, TIMEOUT);
     if (written < 0)
@@ -20,9 +20,9 @@ int serial_write(struct sp_port *port, const uint8_t *buf, int len)
     return written;
 }
 
-int serial_write_chunks(struct sp_port *port, const uint8_t *buf, int len, int chunk_size)
+int serial_write_chunks(struct sp_port *port, const uint8_t *buf, size_t len, size_t chunk_size)
 {
-    for (int i = 0; i < len; i += chunk_size)
+    for (size_t i = 0; i < len; i += chunk_size)
     {
         int chunk = (i + chunk_size < len) ? chunk_size : (len - i);
         int written = sp_blocking_write(port, buf + i, chunk, TIMEOUT);
@@ -37,8 +37,8 @@ int serial_write_chunks(struct sp_port *port, const uint8_t *buf, int len, int c
 int serial_wait_ack(struct sp_port *port, int timeout_ms)
 {
     uint8_t resp;
-    int rlen = serial_wait_packet(port, &resp, 1, timeout_ms);
-    if (rlen != 1)
+    size_t rcv_len = serial_wait_packet(port, &resp, 1, timeout_ms);
+    if (rcv_len != 1)
     {
         fprintf(stderr, "\n[serial_wait_ack] Timeout\n");
         return -1;

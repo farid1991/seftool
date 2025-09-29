@@ -32,6 +32,8 @@ enum
     GD_COUNT,
 };
 
+int gdfs_read_var(struct sp_port *port, struct gdfs_data_t *gdfs, int gd_index,
+                         uint8_t block, uint8_t lsb, uint8_t msb);
 int gdfs_get_phonename(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs);
 int gdfs_get_brand(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs);
 int gdfs_get_cxc_article(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs);

@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 // --- Write helpers ---
-int serial_write(struct sp_port *port, const uint8_t *buf, int len);
-int serial_write_chunks(struct sp_port *port, const uint8_t *buf, int len, int chunk_size);
+int serial_write(struct sp_port *port, const uint8_t *buf, size_t len);
+int serial_write_chunks(struct sp_port *port, const uint8_t *buf, size_t len, size_t chunk_size);
 
 int serial_send_packetdata_ack(struct sp_port *port, const uint8_t *data, size_t len);
 

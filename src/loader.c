@@ -14,17 +14,17 @@
 int wait_e3_answer(struct sp_port *port, const char *expected, int timeout_ms, int skiperrors)
 {
     uint8_t buf[3];
-    int got = 0;
+    size_t received = 0;
 
-    while (got < 3)
+    while (received < 3)
     {
-        int rcv_len = sp_blocking_read(port, buf + got, 3 - got, timeout_ms);
+        int rcv_len = sp_blocking_read(port, buf + received, 3 - received, timeout_ms);
         if (rcv_len <= 0)
         {
             fprintf(stderr, "Read failed (rcv_len=%d)\n", rcv_len);
             return -1;
         }
-        got += rcv_len;
+        received += rcv_len;
     }
 
     if (memcmp(buf, expected, 3) != 0)
@@ -112,14 +112,14 @@ int loader_send_binary_cmd3e(struct sp_port *port, const char *loader_name)
 
     // Read entire loader into memory
     fseek(fb, 0, SEEK_END);
-    uint32_t fsize = ftell(fb);
+    size_t fsize = ftell(fb);
     fseek(fb, 0, SEEK_SET);
 
     uint8_t *buffer = malloc(fsize);
     if (!buffer)
     {
         fclose(fb);
-        fprintf(stderr, "No memory for loader (%d bytes)\n", fsize);
+        fprintf(stderr, "No memory for loader (%zu bytes)\n", fsize);
         return -1;
     }
 
@@ -188,14 +188,14 @@ int loader_send_unsigned_ldr(struct sp_port *port, const char *loader_name, uint
 
     // Read entire loader into memory
     fseek(fh, 0, SEEK_END);
-    uint32_t fsize = ftell(fh);
+    size_t fsize = ftell(fh);
     fseek(fh, 0, SEEK_SET);
 
     uint8_t *buffer = malloc(fsize);
     if (!buffer)
     {
         fclose(fh);
-        fprintf(stderr, "No memory for loader (%d bytes)\n", fsize);
+        fprintf(stderr, "No memory for loader (%zu bytes)\n", fsize);
         return -1;
     }
 
@@ -412,14 +412,14 @@ int loader_send_qhldr_noact(struct sp_port *port, struct phone_info *phone, cons
 
     // Read entire loader into memory
     fseek(fh, 0, SEEK_END);
-    uint32_t fsize = ftell(fh);
+    size_t fsize = ftell(fh);
     fseek(fh, 0, SEEK_SET);
 
     uint8_t *buffer = malloc(fsize);
     if (!buffer)
     {
         fclose(fh);
-        fprintf(stderr, "No memory for loader (%d bytes)\n", fsize);
+        fprintf(stderr, "No memory for loader (%zu bytes)\n", fsize);
         return -1;
     }
 
@@ -428,9 +428,9 @@ int loader_send_qhldr_noact(struct sp_port *port, struct phone_info *phone, cons
 
     struct babehdr_t *babehdr = (struct babehdr_t *)buffer;
 
-    int qh_size = sizeof(struct babehdr_t);
-    int qa_size = babehdr->prologuesize1;
-    int qd_size = babehdr->payloadsize1;
+    size_t qh_size = sizeof(struct babehdr_t);
+    size_t qa_size = babehdr->prologuesize1;
+    size_t qd_size = babehdr->payloadsize1;
 
     uint8_t *qh00 = buffer;
     uint8_t *qa00 = buffer + qh_size;
@@ -545,11 +545,16 @@ error:
 
 int loader_send_qhldr(struct sp_port *port, struct phone_info *phone, const char *loader_name)
 {
+    if (phone->qhldr_sent == 1)
+        return 0;
+
     if (loader_send_qhldr_noact(port, phone, loader_name) != 0)
         return -1;
 
     if (loader_activate_payload(port, phone) != 0)
         return -1;
+
+    phone->qhldr_sent = 1;
 
     printf("FLASH ID: 0x%x (%s)\n", phone->flash_id, get_flash_vendor(phone->flash_id));
 
@@ -570,10 +575,10 @@ int loader_send_qhldr(struct sp_port *port, struct phone_info *phone, const char
     return 0;
 }
 
-int loader_send_encoded_cmd_and_data(struct sp_port *port, uint8_t cmd, uint8_t *data, int total_bytes)
+int loader_send_encoded_cmd_and_data(struct sp_port *port, uint8_t cmd, uint8_t *data, size_t total_bytes)
 {
     uint8_t buf[0x800];
-    int sent_bytes = 0;
+    size_t sent_bytes = 0;
     int do_once = 1;
 
     // printf("%s ... (%d bytes)\n", desc, total_bytes);
@@ -641,14 +646,14 @@ int loader_send_binary_noact(struct sp_port *port, const char *loader_name)
 
     // Read entire loader into memory
     fseek(fh, 0, SEEK_END);
-    uint32_t fsize = ftell(fh);
+    size_t fsize = ftell(fh);
     fseek(fh, 0, SEEK_SET);
 
     uint8_t *buffer = malloc(fsize);
     if (!buffer)
     {
         fclose(fh);
-        fprintf(stderr, "No memory for loader (%d bytes)\n", fsize);
+        fprintf(stderr, "No memory for loader (%zu bytes)\n", fsize);
         return -1;
     }
 
@@ -657,9 +662,9 @@ int loader_send_binary_noact(struct sp_port *port, const char *loader_name)
 
     struct babehdr_t *babehdr = (struct babehdr_t *)buffer;
 
-    int qh_size = sizeof(struct babehdr_t);
-    int qa_size = babehdr->prologuesize1;
-    int qd_size = babehdr->payloadsize1;
+    size_t qh_size = sizeof(struct babehdr_t);
+    size_t qa_size = babehdr->prologuesize1;
+    size_t qd_size = babehdr->payloadsize1;
 
     uint8_t *qh00 = buffer;
     uint8_t *qa00 = buffer + qh_size;
@@ -847,8 +852,11 @@ int loader_get_otp_data(struct sp_port *port, struct phone_info *phone)
     memcpy(phone->otp_imei, repl.data + 5, 14);
     phone->otp_imei[14] = '\0';
 
-    if (strstr(phone->otp_imei, "35345600"))
+    if (strncmp(phone->otp_imei, "353456", 6) == 0 ||
+        strncmp(phone->otp_imei, "353457", 6) == 0)
+    {
         phone->is_z1010 = 1;
+    }
 
     return 0;
 }
@@ -877,6 +885,22 @@ int loader_get_flash_data(struct sp_port *port, struct phone_info *phone)
         return -1;
 
     phone->flash_id = (repl.data[0] << 8) | repl.data[1];
+
+    switch (phone->flash_id)
+    {
+    case 0x200D:
+    case 0x890D:
+        phone->flashblocksize = 0x20000;
+        break;
+    case 0x2019:
+    case 0x897E:
+        phone->flashblocksize = 0x40000;
+        break;
+    default:
+        printf("unknown flash chip\n");
+        phone->flashblocksize = 0;
+        break;
+    }
 
     return 0;
 }
@@ -911,62 +935,6 @@ int loader_activate_gdfs(struct sp_port *port)
     }
 
     printf("activated\n");
-    return 0;
-}
-
-int loader_read_gdfs_var(struct sp_port *port, struct gdfs_data_t *gdfs, int gd_index,
-                         uint8_t block, uint8_t lsb, uint8_t msb)
-{
-    uint8_t cmd_buf[64];
-    int cmd_len = cmd_encode_read_gdfs(block, lsb, msb, cmd_buf);
-    if (cmd_len <= 0)
-        return -1;
-
-    // --- send command
-    if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
-        return -1;
-
-    // --- wait for response packet
-    uint8_t resp[128];
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), TIMEOUT);
-    if (rcv_len <= 0)
-        return -1;
-
-    struct packetdata_t repl;
-    if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
-        return -1;
-
-    switch (gd_index)
-    {
-    case GD_PHONE_NAME:
-        wcstombs(gdfs->phone_name, (wchar_t *)(repl.data + 1), repl.length);
-        break;
-    case GD_BRAND:
-        strncpy(gdfs->brand, (char *)(repl.data + 1), repl.length);
-        break;
-    case GD_CXC_ARTICLE:
-        strncpy(gdfs->cxc_article, (char *)(repl.data + 1), repl.length);
-        break;
-    case GD_CXC_VERSION:
-        strncpy(gdfs->cxc_version, (char *)(repl.data + 1), repl.length);
-        break;
-    case GD_LANGPACK:
-        strncpy(gdfs->langpack, (char *)(repl.data + 1), repl.length);
-        break;
-    case GD_CDA_ARTICLE:
-        strncpy(gdfs->cda_article, (char *)(repl.data + 1), repl.length);
-        break;
-    case GD_CDA_REVISION:
-        strncpy(gdfs->cda_revision, (char *)(repl.data + 1), repl.length);
-        break;
-    case GD_DEF_ARTICLE:
-        strncpy(gdfs->default_article, (char *)(repl.data + 1), repl.length);
-        break;
-    case GD_DEF_VERSION:
-        strncpy(gdfs->default_version, (char *)(repl.data + 1), repl.length);
-        break;
-    }
-
     return 0;
 }
 
@@ -1440,7 +1408,7 @@ int loader_send_bflash_ldr(struct sp_port *port, struct phone_info *phone)
         break;
     case DB2010_1:
     case DB2010_2:
-        if (phone->erom_cid == 29) // K500/K700
+        if (phone->erom_cid == 29)
         {
             phone->skip_cmd = 1;
             if (loader_send_qhldr(port, phone, DB2010_CERTLOADER_RED_CID01_R2E) != 0)
@@ -1499,7 +1467,23 @@ int loader_send_bflash_ldr(struct sp_port *port, struct phone_info *phone)
         }
         break;
     case DB2020:
-        if (phone->anycid == 0)
+        if (phone->anycid == 1)
+        {
+            phone->skiperrors = 1;
+            phone->skip_cmd = 1;
+
+            if (loader_send_qhldr(port, phone, DB2020_PRELOADER_FOR_SETOOL2) != 0)
+            {
+                printf("[QHTRY] Run executer first\n");
+                return -1;
+            }
+            if (loader_send_binary(port, phone, DB2020_LOADER_FOR_SETOOL2) != 0)
+                return -1;
+
+            printf("Security disabled =)\n");
+            return 0;
+        }
+        else
         {
             if (loader_send_qhldr(port, phone, DB2020_PILOADER_RED_CID01_P3M) != 0)
                 return -1;
@@ -1511,22 +1495,10 @@ int loader_send_bflash_ldr(struct sp_port *port, struct phone_info *phone)
                     return -1;
                 return 0;
             }
-            fprintf(stderr, "This cid & cert is not supported, convert to brown first or break using anycid exploit\n");
-            return -1;
         }
-        phone->skiperrors = 1;
-        phone->skip_cmd = 1;
 
-        if (loader_send_qhldr(port, phone, DB2020_PRELOADER_FOR_SETOOL2) != 0)
-        {
-            printf("[QHTRY] Run executer first\n");
-            return -1;
-        }
-        if (loader_send_binary(port, phone, DB2020_LOADER_FOR_SETOOL2) != 0)
-            return -1;
-
-        printf("Security disabled =)\n");
-        return 0;
+        fprintf(stderr, "This cid & cert is not supported, convert to brown first or break using anycid exploit\n");
+        return -1;
 
     case PNX5230:
         phone->skiperrors = 1;

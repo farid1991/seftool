@@ -10,6 +10,62 @@
 #include "loader.h"
 #include "serial.h"
 
+int gdfs_read_var(struct sp_port *port, struct gdfs_data_t *gdfs, int gd_index,
+                         uint8_t block, uint8_t lsb, uint8_t msb)
+{
+    uint8_t cmd_buf[64];
+    int cmd_len = cmd_encode_read_gdfs(block, lsb, msb, cmd_buf);
+    if (cmd_len <= 0)
+        return -1;
+
+    // --- send command
+    if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
+        return -1;
+
+    // --- wait for response packet
+    uint8_t resp[128];
+    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), TIMEOUT);
+    if (rcv_len <= 0)
+        return -1;
+
+    struct packetdata_t repl;
+    if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
+        return -1;
+
+    switch (gd_index)
+    {
+    case GD_PHONE_NAME:
+        wcstombs(gdfs->phone_name, (wchar_t *)(repl.data + 1), repl.length);
+        break;
+    case GD_BRAND:
+        strncpy(gdfs->brand, (char *)(repl.data + 1), repl.length);
+        break;
+    case GD_CXC_ARTICLE:
+        strncpy(gdfs->cxc_article, (char *)(repl.data + 1), repl.length);
+        break;
+    case GD_CXC_VERSION:
+        strncpy(gdfs->cxc_version, (char *)(repl.data + 1), repl.length);
+        break;
+    case GD_LANGPACK:
+        strncpy(gdfs->langpack, (char *)(repl.data + 1), repl.length);
+        break;
+    case GD_CDA_ARTICLE:
+        strncpy(gdfs->cda_article, (char *)(repl.data + 1), repl.length);
+        break;
+    case GD_CDA_REVISION:
+        strncpy(gdfs->cda_revision, (char *)(repl.data + 1), repl.length);
+        break;
+    case GD_DEF_ARTICLE:
+        strncpy(gdfs->default_article, (char *)(repl.data + 1), repl.length);
+        break;
+    case GD_DEF_VERSION:
+        strncpy(gdfs->default_version, (char *)(repl.data + 1), repl.length);
+        break;
+    }
+
+    return 0;
+}
+
 int gdfs_get_phonename(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs)
 {
     uint8_t block = 0;
@@ -41,7 +97,7 @@ int gdfs_get_phonename(struct sp_port *port, struct phone_info *phone, struct gd
         return -1;
     }
 
-    return loader_read_gdfs_var(port, gdfs, GD_PHONE_NAME, block, msb, lsb);
+    return gdfs_read_var(port, gdfs, GD_PHONE_NAME, block, msb, lsb);
 }
 
 int gdfs_get_brand(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs)
@@ -75,7 +131,7 @@ int gdfs_get_brand(struct sp_port *port, struct phone_info *phone, struct gdfs_d
         return -1;
     }
 
-    return loader_read_gdfs_var(port, gdfs, GD_BRAND, block, msb, lsb);
+    return gdfs_read_var(port, gdfs, GD_BRAND, block, msb, lsb);
 }
 
 int gdfs_parse_simlockdata(struct gdfs_data_t *gdfs, uint8_t *simlock)
@@ -219,7 +275,7 @@ int gdfs_get_cxc_article(struct sp_port *port, struct phone_info *phone, struct 
         return -1;
     }
 
-    return loader_read_gdfs_var(port, gdfs, GD_CXC_ARTICLE, block, msb, lsb);
+    return gdfs_read_var(port, gdfs, GD_CXC_ARTICLE, block, msb, lsb);
 }
 
 int gdfs_get_cxc_version(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs)
@@ -246,7 +302,7 @@ int gdfs_get_cxc_version(struct sp_port *port, struct phone_info *phone, struct 
         return -1;
     }
 
-    return loader_read_gdfs_var(port, gdfs, GD_CXC_VERSION, block, msb, lsb);
+    return gdfs_read_var(port, gdfs, GD_CXC_VERSION, block, msb, lsb);
 }
 
 int gdfs_get_language(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs)
@@ -279,7 +335,7 @@ int gdfs_get_language(struct sp_port *port, struct phone_info *phone, struct gdf
         return -1;
     }
 
-    return loader_read_gdfs_var(port, gdfs, GD_LANGPACK, block, msb, lsb);
+    return gdfs_read_var(port, gdfs, GD_LANGPACK, block, msb, lsb);
 }
 
 int gdfs_get_cda_article(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs)
@@ -313,7 +369,7 @@ int gdfs_get_cda_article(struct sp_port *port, struct phone_info *phone, struct 
         return -1;
     }
 
-    return loader_read_gdfs_var(port, gdfs, GD_CDA_ARTICLE, block, msb, lsb);
+    return gdfs_read_var(port, gdfs, GD_CDA_ARTICLE, block, msb, lsb);
 }
 
 int gdfs_get_cda_revision(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs)
@@ -347,7 +403,7 @@ int gdfs_get_cda_revision(struct sp_port *port, struct phone_info *phone, struct
         return -1;
     }
 
-    return loader_read_gdfs_var(port, gdfs, GD_CDA_REVISION, block, msb, lsb);
+    return gdfs_read_var(port, gdfs, GD_CDA_REVISION, block, msb, lsb);
 }
 
 int gdfs_get_default_article(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs)
@@ -381,7 +437,7 @@ int gdfs_get_default_article(struct sp_port *port, struct phone_info *phone, str
         return -1;
     }
 
-    return loader_read_gdfs_var(port, gdfs, GD_DEF_ARTICLE, block, msb, lsb);
+    return gdfs_read_var(port, gdfs, GD_DEF_ARTICLE, block, msb, lsb);
 }
 
 int gdfs_get_default_version(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs)
@@ -415,7 +471,7 @@ int gdfs_get_default_version(struct sp_port *port, struct phone_info *phone, str
         return -1;
     }
 
-    return loader_read_gdfs_var(port, gdfs, GD_DEF_VERSION, block, msb, lsb);
+    return gdfs_read_var(port, gdfs, GD_DEF_VERSION, block, msb, lsb);
 }
 
 int gdfs_get_userlock(struct sp_port *port, struct gdfs_data_t *gdfs)

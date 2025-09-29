@@ -133,10 +133,16 @@ int babe_check(uint8_t *file, size_t size, int checktype)
     return CHECKBABE_OK;
 }
 
-int is_babe(uint8_t *addr, size_t size)
+int babe_is_valid(uint8_t *addr, size_t size)
 {
-    struct babehdr_t *babe = (struct babehdr_t *)addr;
-    return (size >= sizeof(struct babehdr_t)) &&
-           (babe->sig == 0xBEBA) &&
-           (babe->prologuesize1 + babe->payloadsize1 + sizeof(struct babehdr_t) == size);
+    if (size < sizeof(struct babehdr_t))
+        return 0;
+
+    if (addr[0] != 0xBA || addr[1] != 0xBE)
+        return 0;
+
+    uint32_t v1 = get_word(addr + 0x228);
+    uint32_t v2 = get_word(addr + 0x2E8);
+
+    return (v1 + v2 + 0x380 == size);
 }
