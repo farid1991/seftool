@@ -28,7 +28,7 @@ int csloader_read_gdfs_var(struct sp_port *port, uint8_t block, uint8_t lo, uint
         return -1;
 
     uint8_t resp[0x1000];
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), TIMEOUT);
+    int rcv_len = serial_read(port, resp, sizeof(resp), TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -73,10 +73,7 @@ int csloader_write_gdfs_var(struct sp_port *port, uint8_t block, uint8_t lo, uin
     if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
         return -1;
 
-    if (serial_wait_ack(port, 50 * TIMEOUT) != 0)
-        return -1;
-
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), TIMEOUT);
+    int rcv_len = serial_read(port, resp, sizeof(resp), TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -84,7 +81,7 @@ int csloader_write_gdfs_var(struct sp_port *port, uint8_t block, uint8_t lo, uin
     if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
         return -1;
 
-    if (repl.data[0] != 0xFF && repl.data[1] != 0x00)
+    if (repl.cmd != 0x04 && repl.data[1] != 0x00)
         return -1;
 
     return 0;
@@ -93,20 +90,14 @@ int csloader_write_gdfs_var(struct sp_port *port, uint8_t block, uint8_t lo, uin
 int csloader_write_gdfs(struct sp_port *port, const char *inputfname)
 {
     printf("Restore GDFS...\n");
-    FILE *f = fopen(inputfname, "rb");
-    if (!f)
+    size_t datasize;
+    uint8_t *buf = load_file(inputfname, &datasize);
+    if (!buf)
     {
-        printf("Restore: Error (Couldn't open inputfile!)\n");
+        fprintf(stderr, "can't read %s\n", inputfname);
         return -1;
     }
 
-    fseek(f, 0, SEEK_END);
-    uint32_t datasize = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    uint8_t *buf = malloc(datasize);
-    fread(buf, 1, datasize, f);
-    fclose(f);
     uint32_t readbytes = 0;
     uint8_t *bufpointer = &buf[4];
 
@@ -135,7 +126,7 @@ int csloader_write_gdfs(struct sp_port *port, const char *inputfname)
         if (csloader_write_gdfs_var(port, block, lo, hi, bufpointer, realsize) != 0)
         {
             free(buf);
-            printf("Wrote %i units!\n", varcount);
+            printf("\n\nWrote %i units!\n", varcount);
             printf("GDFS was not fully restored!\n");
             return -1;
         }
@@ -166,7 +157,7 @@ int csloader_read_gdfs(struct sp_port *port, struct phone_info *phone)
     if (serial_wait_ack(port, 100 * TIMEOUT) < 0)
         return -1;
 
-    int rcv_len = serial_wait_packet(port, &resp[0], 10, 500 * TIMEOUT);
+    int rcv_len = serial_read(port, &resp[0], 10, 500 * TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -190,27 +181,27 @@ int csloader_read_gdfs(struct sp_port *port, struct phone_info *phone)
     for (uint32_t i = 0; i < varcount; i++)
     {
         if (i == 0)
-            serial_wait_packet(port, &resp[bytesread], 1, 500 * TIMEOUT); // wait longer for first unit
+            serial_read(port, &resp[bytesread], 1, 500 * TIMEOUT); // wait longer for first unit
         else
-            serial_wait_packet(port, &resp[bytesread], 1, 100 * TIMEOUT);
+            serial_read(port, &resp[bytesread], 1, 100 * TIMEOUT);
 
         if (bytesread >= datasize)
         {
             printf("Found: %d units\n", chunkcount);
             fwrite(&resp[6], sizeof(uint8_t), bytesread - 6, out);
             serial_send_ack(port);
-            serial_wait_packet(port, resp, 6, 50 * TIMEOUT);
+            serial_read(port, resp, 6, 50 * TIMEOUT);
             datasize = (resp[2] | (resp[3] << 8)) + 1;
             bytesread = 6;
             chunkcount = 0;
-            serial_wait_packet(port, &resp[bytesread], 1, 100 * TIMEOUT);
+            serial_read(port, &resp[bytesread], 1, 100 * TIMEOUT);
         }
         bytesread++;
-        serial_wait_packet(port, &resp[bytesread], 6, 100 * TIMEOUT);
+        serial_read(port, &resp[bytesread], 6, 100 * TIMEOUT);
         bytesread += 2;
         uint32_t varsize = get_word(&resp[bytesread]);
         bytesread += 4;
-        serial_wait_packet(port, &resp[bytesread], varsize, 100 * TIMEOUT);
+        serial_read(port, &resp[bytesread], varsize, 100 * TIMEOUT);
 
         bytesread += varsize;
         chunkcount++;
@@ -224,7 +215,7 @@ int csloader_read_gdfs(struct sp_port *port, struct phone_info *phone)
 
     // read the byte left on the phone queue
     uint8_t byteleft;
-    serial_wait_packet(port, &byteleft, 1, 50 * TIMEOUT);
+    serial_read(port, &byteleft, 1, 50 * TIMEOUT);
 
     return 0;
 }

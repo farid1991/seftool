@@ -24,7 +24,7 @@ int gdfs_read_var(struct sp_port *port, struct gdfs_data_t *gdfs, int gd_index,
 
     // --- wait for response packet
     uint8_t resp[128];
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), TIMEOUT);
+    int rcv_len = serial_read(port, resp, sizeof(resp), TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -168,7 +168,7 @@ int gdfs_get_simlock(struct sp_port *port, struct gdfs_data_t *gdfs)
         return -1;
 
     uint8_t resp[512];
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 5 * TIMEOUT);
+    int rcv_len = serial_read(port, resp, sizeof(resp), 5 * TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -194,7 +194,7 @@ int gdfs_dump_var(struct sp_port *port, struct phone_info *phone, uint16_t block
 
     // --- wait for response packet
     uint8_t resp[1024];
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 5 * TIMEOUT);
+    int rcv_len = serial_read(port, resp, sizeof(resp), 5 * TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -491,7 +491,7 @@ int gdfs_get_userlock(struct sp_port *port, struct gdfs_data_t *gdfs)
 
     // --- wait for response packet
     uint8_t resp[256];
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 5 * TIMEOUT);
+    int rcv_len = serial_read(port, resp, sizeof(resp), 5 * TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -542,7 +542,7 @@ int gdfs_unlock_usercode(struct sp_port *port)
     if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
         return -1;
 
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 5 * TIMEOUT);
+    int rcv_len = serial_read(port, resp, sizeof(resp), 5 * TIMEOUT);
     if (rcv_len <= 0)
     {
         fprintf(stderr, "failed [no answer]\n");
@@ -577,7 +577,7 @@ int gdfs_terminate_access(struct sp_port *port)
         return -1;
 
     uint8_t resp[8];
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 10 * TIMEOUT);
+    int rcv_len = serial_read(port, resp, sizeof(resp), 10 * TIMEOUT);
     if (rcv_len <= 0)
     {
         printf("failed\n\n");

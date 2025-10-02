@@ -1,0 +1,41 @@
+OSE Configuration
+krn/phys_mem/RAM/1=base:0x4c000000 size:16M
+krn/log_mem/RAM=base:0x4c000000 size:16M mapping_type:SASE
+krn/log_mem/NOR_SASE=base:0x44000000 size:32M mapping_type:SASE
+krn/region/rw=base:0x4c000000 size:0xD00000 perm:su_rw_usr_na cache:cache_inhibited mem:ordered_access
+krn/region/flashfx=base:0x45800000 size:7M perm:su_rw_usr_na cache:cache_inhibited mem:ordered_access
+krn/cache=d-cache:disabled i-cache:enabled
+fam/exec/code1=base:0x44000000 size:0x1800000
+semcfs/seg0=start:0x45900000 last:0x47DFFFFF eraseSize:0x40000 blockSize:2048 type:1
+ffx6mt=mode:multi_writer_single_gc main_prio:19 writer_prio:27 gc_prio:30 cache:20480
+ffx6mt/instance/0=base:0x45800000 fmt_size:7M  spare:1 cushion:4 timeout:5000 format:never
+partitions/ffxddb/0/1=name:ffx format:hafsfat lo:4 hi:604 params:
+partitions/ffxddb/0/2=name:ffx format:hafsfat lo:608 hi:11542 params:
+partitions/ffxddb/0/3=name:ffx format:hafsfat lo:11546 hi:11984 params:
+partitions/ffxddb/0/4=name:ffx format:hafsfat lo:11988 hi:12134 params:
+core/volume/ifs=name:/ifs format:hafsfat device:ffxddb params:unit=0,partition=1,async_transactions
+core/volume/tpa=name:/tpa format:hafsfat device:ffxddb params:unit=0,partition=2,async_transactions
+core/volume/system=name:/system format:hafsfat device:ffxddb params:unit=0,partition=3,async_transactions
+core/volume/smsdata=name:/smsdata format:hafsfat device:ffxddb params:unit=0,partition=4,async_transactions
+pm/progtype/SYS_FLASH= mode:supervisor
+pm/progtype/APP_FLASH= mode:user
+pm/progtype/SYS_RAM= mode:supervisor
+pm/progtype/APP_RAM= mode:user
+pm/progtype/SYS_FLASH/text= phys_mem:FLASH log_mem:WC_SASE perm:su_rwx_usr_rwx cache:cache_inhibited mem:speculative_access
+pm/progtype/SYS_FLASH/data= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+pm/progtype/SYS_FLASH/pool= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+pm/progtype/SYS_FLASH/heap= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+pm/progtype/APP_FLASH/text= phys_mem:FLASH log_mem:WC_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+pm/progtype/APP_FLASH/data= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+pm/progtype/APP_FLASH/pool= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+pm/progtype/APP_FLASH/heap= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+pm/progtype/SYS_RAM/text= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_inhibited mem:speculative_access
+pm/progtype/SYS_FLASH/data= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+pm/progtype/SYS_FLASH/pool= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+pm/progtype/SYS_FLASH/heap= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+pm/progtype/APP_RAM/text= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+pm/progtype/APP_RAM/data= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+pm/progtype/APP_RAM/pool= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+pm/progtype/APP_RAM/heap= phys_mem:RAM log_mem:RAM_SASE perm:su_rwx_usr_rwx cache:cache_copy_back mem:speculative_access
+load_agent/lm_list=/ifs/lm/lm_list.txt
+pltf/heap=small_buf_init_size:0x20000 small_buf_ext_size:0x10000

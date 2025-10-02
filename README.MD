@@ -32,11 +32,12 @@ Supports firmware flashing and patching, GDFS (phone data) backup/restore, flash
 - C compiler:
   - **Linux/macOS**: GCC or Clang
   - **Windows**: MinGW (recommended)
-- [libserialport](https://sigrok.org/wiki/Libserialport) installed and available  
-  - **Debian/Ubuntu**: `sudo apt install libserialport-dev`  
-  - **Fedora**: `sudo dnf install libserialport-devel`  
-  - **Arch Linux**: `sudo pacman -S libserialport`  
-  - **Windows**: `pacman -S mingw-w64-x86_64-libserialport`
+- [libserialport](https://sigrok.org/wiki/Libserialport) installed and available
+  - **Debian/Ubuntu**: `sudo apt install libserialport-dev`
+  - **Fedora**: `sudo dnf install libserialport-devel`
+  - **Arch Linux**: `sudo pacman -S libserialport`
+  - **macOS (Homebrew)**: `brew install libserialport`
+  - **Windows (MSYS2 MinGW shell)**: `pacman -S mingw-w64-x86_64-libserialport`
 
 ### Build Steps
 ```sh
@@ -70,6 +71,7 @@ Options:
                           convert raw2babe <filename> <addr>
 Global options:
     --anycid              Ignore CID restrictions (DB2012/DB2020/PNX5230)
+    --break-rsa           Break RSA on DB2000 & DB2010 RED49
   -h, --help              Show this help message
 
 ```
@@ -82,11 +84,11 @@ Global options:
 |:-------------------|:----------------:|:---------------------:|:--------------:|:-------:|
 | identify           | OK               | OK                    | OK             | OK      |
 | flash              | OK (except Z1010)| OK                    | OK             | OK      |
-| read-flash         | CID29&36,BROWN49 | CID29&36+BROWN+ANYCID | BROWN49+ANYCID | ANYCID  |
+| read-flash         | CID29,36,49      | CID29,36,49 + ANYCID  | BROWN49+ANYCID | ANYCID  |
 | read-gdfs          | OK               | OK                    | OK             | OK      |
 | write-gdfs         | OK               | OK                    | OK             | OK      |
 | write-script[gdfs] | OK               | OK                    | OK             | OK      |
-| write-script[vkp]  | CID29&36,BROWN49 | CID29&36+BROWN+ANYCID | BROWN49+ANYCID | ANYCID  |
+| write-script[vkp]  | CID36,49         | CID29,36,49 + ANYCID  | BROWN49+ANYCID | ANYCID  |
 | unlock-usercode    | OK               | OK                    | OK             | OK      |
 | unlock-simlock     | TODO             | TODO                  | TODO           | TODO    |
 
@@ -158,6 +160,14 @@ $ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash main.mbn
 #### Flash filesystem only:
 ```sh
 $ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash fs.fbn
+```
+
+#### Cross-flash DB201x CID49 (example: K310 → W200)
+Some DB201x phones (e.g. K310) can be flashed with firmware from a different model (e.g. W200).  
+This requires enabling RSA-break, otherwise the flash is rejected due to CID mismatch.
+
+```sh
+$ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash w200_main.mbn w200_fs.fbn --break-rsa
 ```
 
 ### Read flash (read-flash):
@@ -247,8 +257,9 @@ Using `seftool` may permanently damage your device if used incorrectly.
 1. CDA upload (flash customization).
 2. Complete operation for phone with CID16 and ~~CID29~~ (DB2000 & DB2010)
 3. ~~VKP patching~~
-4. Break RSA RED49 DB2000 & DB2010
-5. ...
+4. ~~Break RSA RED49 DB2000 & DB2010~~
+5. Patch DB2000 CID16 & CID29
+6. ...
 
 ---
 

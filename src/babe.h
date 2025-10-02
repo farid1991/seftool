@@ -47,11 +47,11 @@ enum
 
 enum
 {
-    COLOR_RED = 0,
-    COLOR_BROWN = 0x60,
-    COLOR_BLUE = 0xFFFFFFEF,
-    COLOR_BLACK = 0x4B434C42,   //'BLCK',  //?????????
-    COLOR_UNKNOWN = 0x4E4B4E55, //'UNKN' //?????????
+    RED = 0,
+    BROWN = 0x60,
+    BLUE = 0xFFFFFFEF,
+    BLACK = 0x4B434C42,   //'BLCK',  //?????????
+    UNKNOWN = 0x4E4B4E55, //'UNKN' //?????????
 };
 
 int babe_check(uint8_t *file, size_t size, int checktype);
@@ -59,8 +59,8 @@ int babe_is_valid(uint8_t *addr, size_t size);
 
 typedef enum
 {
-    CHECKBABE_CHECKFULL,
-    CHECKBABE_CHECKFAST
+    CHECKBABE_CHECKFAST,
+    CHECKBABE_CHECKFULL
 } babe_checktype_t;
 
 typedef enum

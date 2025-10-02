@@ -110,6 +110,8 @@ int cmd_encode_csloader_packet(uint8_t cmd, uint8_t subcmd,
 	return num;
 }
 
+// 06 89 XX XX XX XX ...
+// 00 89 XX XX XX XX ...
 int cmd_decode_packet_ack(const uint8_t *buf, int size, struct packetdata_t *out)
 {
 	if (size < 6)
@@ -157,6 +159,7 @@ int cmd_decode_packet_ack(const uint8_t *buf, int size, struct packetdata_t *out
 	return 0;
 }
 
+// 89 XX XX XX XX ...
 int cmd_decode_packet_noack(const uint8_t *buf, int size, struct packetdata_t *out)
 {
 	if (size < 5)
@@ -214,7 +217,7 @@ int cmd_decode_packet(const uint8_t *buf, int size, struct packetdata_t *out)
 	{
 		return cmd_decode_packet_noack(buf, size, out);
 	}
-	else if (buf[0] == 0 && buf[1] == SERIAL_HDR89) // some CSLOADER
+	else if (buf[0] == 0 && buf[1] == SERIAL_HDR89) // some CSLOADER or DB2000?
 	{
 		return cmd_decode_packet_noack(buf + 1, size - 1, out);
 	}
@@ -222,6 +225,18 @@ int cmd_decode_packet(const uint8_t *buf, int size, struct packetdata_t *out)
 	{
 		return cmd_decode_packet_noack(buf + 1, size - 1, out);
 	}
+	else if (buf[0] == 0 && buf[1] == SERIAL_HDR89) // CSLOADER
+    {
+        return cmd_decode_packet_noack(buf + 1, size - 1, out);
+    }
+    else if (buf[0] == 0x23 && buf[1] == SERIAL_HDR89) // CSLOADER V23 CHIPID:0x8000
+    {
+        return cmd_decode_packet_noack(buf + 1, size - 1, out);
+    }
+    else if (buf[0] == 0 && buf[1] == 0x23 && buf[2] == SERIAL_HDR89) // CSLOADER DB2000?
+    {
+        return cmd_decode_packet_noack(buf + 2, size - 2, out);
+    }
 	else
 	{
 		fprintf(stderr, "Expected:89 XX XX XX XX || Got: %02X %02X\n", buf[0], buf[1]);

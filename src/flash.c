@@ -1,4 +1,3 @@
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -26,9 +25,9 @@
 
 // ------------- Write to Flash -------------
 
-int flash_babe(struct sp_port *port, uint8_t *addr, size_t size, int flashfull)
+int flash_babe(struct sp_port *port, uint8_t *babe_buf, size_t size, int flashfull)
 {
-    struct babehdr_t *hdr = (struct babehdr_t *)addr;
+    struct babehdr_t *hdr = (struct babehdr_t *)babe_buf;
     int fileformatver = hdr->ver;
     size_t hashsize = fileformatver >= 4 ? 20 : 1;
     int blocks = hdr->payloadsize1;
@@ -43,7 +42,7 @@ int flash_babe(struct sp_port *port, uint8_t *addr, size_t size, int flashfull)
             chunk = 0x800;
 
         uint8_t cmd_buf[0x1000];
-        int cmd_len = cmd_encode_binary_packet(0x0E, addr + curpos, chunk, cmd_buf);
+        int cmd_len = cmd_encode_binary_packet(0x0E, babe_buf + curpos, chunk, cmd_buf);
         if (cmd_len <= 0)
             return FLASH_ERROR;
 
@@ -51,7 +50,7 @@ int flash_babe(struct sp_port *port, uint8_t *addr, size_t size, int flashfull)
             return FLASH_ERROR;
 
         uint8_t resp[7];
-        int rcv_len = serial_wait_packet(port, resp, sizeof(resp), TIMEOUT);
+        int rcv_len = serial_read(port, resp, sizeof(resp), TIMEOUT);
         if (rcv_len <= 0)
             return FLASH_ERROR;
 
@@ -74,7 +73,7 @@ int flash_babe(struct sp_port *port, uint8_t *addr, size_t size, int flashfull)
     {
         if (curpos + 8 >= size)
             break;
-        long bsize = ((long *)(addr + curpos))[1];
+        long bsize = ((long *)(babe_buf + curpos))[1];
         if (bsize > BLOCK_SIZE)
             break;
         curpos += 8;
@@ -92,23 +91,23 @@ int flash_babe(struct sp_port *port, uint8_t *addr, size_t size, int flashfull)
         if (curpos + 8 >= size)
             break;
 
-        int addr_val = ((int *)(addr + curpos))[0];
-        int bsize = ((int *)(addr + curpos))[1];
+        int addr_val = ((int *)(babe_buf + curpos))[0];
+        int bsize = ((int *)(babe_buf + curpos))[1];
 
         printf("\rflashing block %d/%d (addr %08X size %08X)",
                bl + 1, blocks, addr_val, bsize);
         fflush(stdout);
 
         // send block header
-        uint8_t cmd_buf[0x1000];
-        int cmd_len = cmd_encode_binary_packet(0x10, addr + curpos, 8, cmd_buf);
+        uint8_t cmd_buf[0xD];
+        int cmd_len = cmd_encode_binary_packet(0x10, babe_buf + curpos, 8, cmd_buf);
         if (cmd_len <= 0)
             return FLASH_ERROR;
 
         if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
             return FLASH_ERROR;
 
-        if (serial_wait_ack(port, 50) < 0)
+        if (serial_wait_ack(port, TIMEOUT) < 0)
             return FLASH_ERROR;
 
         if (bsize > BLOCK_SIZE)
@@ -119,16 +118,17 @@ int flash_babe(struct sp_port *port, uint8_t *addr, size_t size, int flashfull)
         if ((curpos + bsize > size))
             break;
 
-        // send block data in chunks
+        // send block data
         while (bsize > 0)
         {
+            uint8_t data_buf[0x800];
             uint32_t tsize = (bsize > 0x800) ? 0x800 : bsize;
-            cmd_len = cmd_encode_binary_packet(0x01, addr + curpos, tsize, cmd_buf);
+            cmd_len = cmd_encode_binary_packet(0x01, babe_buf + curpos, tsize, data_buf);
             if (cmd_len <= 0)
                 return FLASH_ERROR;
-            if (serial_write_chunks(port, cmd_buf, cmd_len, 0x400) < 0)
+            if (serial_write_chunks(port, data_buf, cmd_len, 0x400) < 0)
                 return FLASH_ERROR;
-            if (serial_wait_ack(port, 50) < 0)
+            if (serial_wait_ack(port, TIMEOUT) < 0)
                 return FLASH_ERROR;
 
             curpos += tsize;
@@ -136,8 +136,8 @@ int flash_babe(struct sp_port *port, uint8_t *addr, size_t size, int flashfull)
         }
 
         // wait for block reply
-        uint8_t resp[8];
-        int rcv_len = serial_wait_packet(port, resp, sizeof(resp), TIMEOUT);
+        uint8_t resp[6];
+        int rcv_len = serial_read(port, resp, sizeof(resp), TIMEOUT);
         if (rcv_len <= 0)
             return FLASH_ERROR;
 
@@ -145,17 +145,14 @@ int flash_babe(struct sp_port *port, uint8_t *addr, size_t size, int flashfull)
         if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
             return FLASH_ERROR;
 
-        switch (repl.cmd)
+        if (repl.cmd != 0x13)
         {
-        case 0x13:
-            if (repl.length != 1 || repl.data[0] != 0x00)
-            {
-                printf("\nsend block error\n");
-                return FLASH_ERROR;
-            }
-            break;
-        default:
             printf("\nunexpected reply during flash block: 0x%02X\n", repl.cmd);
+            return FLASH_ERROR;
+        }
+        if (repl.length != 1 || repl.data[0] != 0x00)
+        {
+            printf("\nsend block error\n");
             return FLASH_ERROR;
         }
     }
@@ -163,7 +160,7 @@ int flash_babe(struct sp_port *port, uint8_t *addr, size_t size, int flashfull)
     // --- finalization ---
     if (flashfull)
     {
-        uint8_t cmd_buf[0x100];
+        uint8_t cmd_buf[0x6];
         int cmd_len = cmd_encode_binary_packet(0x11, NULL, 0, cmd_buf);
         if (cmd_len <= 0)
             return FLASH_ERROR;
@@ -172,7 +169,7 @@ int flash_babe(struct sp_port *port, uint8_t *addr, size_t size, int flashfull)
             return FLASH_ERROR;
 
         uint8_t resp[8];
-        int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 100 * TIMEOUT); // 10s timeout
+        int rcv_len = serial_read(port, resp, sizeof(resp), 100 * TIMEOUT); // 10s timeout
         if (rcv_len <= 0)
             return FLASH_ERROR;
 
@@ -180,17 +177,14 @@ int flash_babe(struct sp_port *port, uint8_t *addr, size_t size, int flashfull)
         if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
             return FLASH_ERROR;
 
-        switch (repl.cmd)
+        if (repl.cmd != 0x12)
         {
-        case 0x12:
-            if (repl.length != 1 || repl.data[0] != 0x00)
-            {
-                printf("final error\n");
-                return FLASH_ERROR;
-            }
-            break;
-        default:
             printf("unexpected reply during final check: 0x%02X\n", repl.cmd);
+            return FLASH_ERROR;
+        }
+        if (repl.length != 1 || repl.data[0] != 0x00)
+        {
+            printf("final error\n");
             return FLASH_ERROR;
         }
     }
@@ -204,30 +198,10 @@ int flash_babe_fw(struct sp_port *port, const char *filename, int flashfull)
 {
     printf("\nflashing babe: %s\n", filename);
 
-    FILE *fb = fopen(filename, "rb");
-    if (!fb)
-    {
-        fprintf(stderr, "file (%s) does not exist!\n", filename);
-        return FLASH_ERROR;
-    }
+    size_t size;
+    uint8_t *buffer = load_file(filename, &size);
 
-    // Read entire loader into memory
-    fseek(fb, 0, SEEK_END);
-    size_t size = ftell(fb);
-    fseek(fb, 0, SEEK_SET);
-
-    uint8_t *addr = malloc(size);
-    if (!addr)
-    {
-        fclose(fb);
-        fprintf(stderr, "No memory (%zu bytes)\n", size);
-        return FLASH_ERROR;
-    }
-
-    fread(addr, 1, size, fb);
-    fclose(fb);
-
-    int babe = babe_check(addr, size, CHECKBABE_CHECKFULL);
+    int babe = babe_check(buffer, size, CHECKBABE_CHECKFULL);
     switch (babe)
     {
     case CHECKBABE_NOTBABE:
@@ -255,14 +229,14 @@ int flash_babe_fw(struct sp_port *port, const char *filename, int flashfull)
         goto exit_error;
     }
 
-    if (flash_babe(port, addr, size, flashfull) == 0)
+    if (flash_babe(port, buffer, size, flashfull) == 0)
     {
-        free(addr);
+        free(buffer);
         return FLASH_OK;
     }
 
 exit_error:
-    free(addr);
+    free(buffer);
     return FLASH_ERROR;
 }
 
@@ -307,32 +281,13 @@ uint8_t *flash_convert_raw_to_babe(uint8_t *raw, size_t size, uint32_t raw_addr,
 
 int flash_cnv_babe_to_raw_file(const char *babe_filename, const char *raw_filename)
 {
-    FILE *fin = fopen(babe_filename, "rb");
-    if (!fin)
-    {
-        fprintf(stderr, "file (%s) does not exist!\n", babe_filename);
-        return -1;
-    }
-
-    fseek(fin, 0, SEEK_END);
-    size_t fsize = ftell(fin);
-    fseek(fin, 0, SEEK_SET);
-
-    uint8_t *buf = malloc(fsize);
+    size_t fsize;
+    uint8_t *buf = load_file(babe_filename, &fsize);
     if (!buf)
     {
-        fclose(fin);
+        fprintf(stderr, "can't read %s\n", babe_filename);
         return -1;
     }
-
-    if (fread(buf, 1, fsize, fin) != fsize)
-    {
-        fprintf(stderr, "Failed to read babe file (%s)\n", babe_filename);
-        free(buf);
-        fclose(fin);
-        return -1;
-    }
-    fclose(fin);
 
     struct babehdr_t *hdr = (struct babehdr_t *)buf;
     if (hdr->sig != 0xBEBA)
@@ -410,38 +365,17 @@ int flash_cnv_babe_to_raw_file(const char *babe_filename, const char *raw_filena
 
 int flash_cnv_raw_to_babe_file(const char *raw_filename, const char *babe_filename, uint32_t raw_addr)
 {
-    FILE *fr = fopen(raw_filename, "rb");
-    if (!fr)
-    {
-        fprintf(stderr, "file (%s) does not exist!\n", raw_filename);
-        return FLASH_ERROR;
-    }
-
-    // Get file size
-    fseek(fr, 0, SEEK_END);
-    size_t size = ftell(fr);
-    fseek(fr, 0, SEEK_SET);
-
-    uint8_t *raw = malloc(size);
+    size_t fsize;
+    uint8_t *raw = load_file(raw_filename, &fsize);
     if (!raw)
     {
-        fclose(fr);
-        fprintf(stderr, "No memory (%zu bytes)\n", size);
-        return FLASH_ERROR;
+        fprintf(stderr, "can't read %s\n", raw_filename);
+        return -1;
     }
-
-    if (fread(raw, 1, size, fr) != size)
-    {
-        fclose(fr);
-        free(raw);
-        fprintf(stderr, "Failed to read entire file (%s)\n", raw_filename);
-        return FLASH_ERROR;
-    }
-    fclose(fr);
 
     // Convert
     size_t babe_size;
-    uint8_t *babe = flash_convert_raw_to_babe(raw, size, raw_addr, &babe_size);
+    uint8_t *babe = flash_convert_raw_to_babe(raw, fsize, raw_addr, &babe_size);
     free(raw);
 
     if (!babe)
@@ -476,33 +410,17 @@ int flash_cnv_raw_to_babe_file(const char *raw_filename, const char *babe_filena
 
 int flash_raw(struct sp_port *port, const char *filename, uint32_t raw_addr)
 {
-    printf("\nflashing raw: %s\n", filename);
-
-    FILE *fb = fopen(filename, "rb");
-    if (!fb)
-    {
-        fprintf(stderr, "file (%s) does not exist!\n", filename);
-        return FLASH_ERROR;
-    }
-
-    fseek(fb, 0, SEEK_END);
-    size_t size = ftell(fb);
-    fseek(fb, 0, SEEK_SET);
-
-    uint8_t *raw = malloc(size);
+    size_t fsize;
+    uint8_t *raw = load_file(filename, &fsize);
     if (!raw)
     {
-        fclose(fb);
-        fprintf(stderr, "No memory (%zu bytes)\n", size);
-        return FLASH_ERROR;
+        fprintf(stderr, "can't read %s\n", filename);
+        return -1;
     }
-
-    fread(raw, 1, size, fb);
-    fclose(fb);
 
     printf("converting raw->babe\n");
     size_t babesize;
-    uint8_t *babe = flash_convert_raw_to_babe(raw, size, raw_addr, &babesize);
+    uint8_t *babe = flash_convert_raw_to_babe(raw, fsize, raw_addr, &babesize);
     free(raw);
 
     if (!babe)
@@ -532,8 +450,22 @@ int flash_restore_boot_area(struct sp_port *port, struct phone_info *phone)
     if (frest)
     {
         fclose(frest);
-        if (flash_babe_fw(port, restfile, 1) != 0)
+
+        printf("Flashing REST: %s\n", restfile);
+
+        size_t size;
+        uint8_t *rest = load_file(restfile, &size);
+        if (!rest)
+        {
+            fprintf(stderr, "can't read %s\n", restfile);
             return -1;
+        }
+        if (flash_babe(port, rest, size, 1) != 0)
+        {
+            free(rest);
+            return -1;
+        }
+        free(rest);
     }
     else
     {
@@ -548,6 +480,8 @@ int flash_restore_boot_area(struct sp_port *port, struct phone_info *phone)
             return -1;
         }
         fclose(fraw);
+
+        printf("Flashing RAW: %s\n", raw_file);
 
         if (phone->chip_id == PNX5230)
         {
@@ -574,7 +508,7 @@ int flash_recv_block(struct sp_port *port,
 {
     // read 4-byte header
     uint8_t hdr_buf[4];
-    int rcv_len = serial_wait_packet(port, hdr_buf, sizeof(hdr_buf), 5 * TIMEOUT);
+    int rcv_len = serial_read(port, hdr_buf, sizeof(hdr_buf), 5 * TIMEOUT);
     if (rcv_len < 0)
         return FLASH_ERROR;
 
@@ -598,13 +532,13 @@ int flash_recv_block(struct sp_port *port,
 
     // read block
     uint8_t resp[0x800];
-    rcv_len = serial_wait_packet(port, resp, length, 5 * TIMEOUT);
+    rcv_len = serial_read(port, resp, length, 5 * TIMEOUT);
     if (rcv_len < 0)
         return FLASH_ERROR;
 
     // read checksum
     uint8_t checksum;
-    rcv_len = serial_wait_packet(port, &checksum, 1, 5 * TIMEOUT);
+    rcv_len = serial_read(port, &checksum, 1, 5 * TIMEOUT);
     if (rcv_len < 0)
         return FLASH_ERROR;
 
@@ -658,7 +592,7 @@ uint8_t *flash_read_raw(struct sp_port *port, uint32_t addr, size_t size)
         return NULL;
 
     uint8_t ack;
-    int rcv_len = serial_wait_packet(port, &ack, 1, 50 * TIMEOUT);
+    int rcv_len = serial_read(port, &ack, 1, 50 * TIMEOUT);
     if (rcv_len <= 0)
         return NULL;
 
@@ -728,20 +662,31 @@ int flash_detect_fw_version(struct sp_port *port, struct phone_info *phone)
 {
     if (phone->chip_id == PNX5230)
     {
-        // --- primary scan
-        if (flash_scan_fw_version(port, phone, 0x216E0000, 3 * BLOCK_SIZE) == 0)
+        if (flash_scan_fw_version(port, phone, 0x216E0000, 4 * BLOCK_SIZE) == 0) // W350/W380/Z555
             return FLASH_OK;
 
-        // --- fallback for Z310 fw
-        return flash_scan_fw_version(port, phone, 0x213FC000, BLOCK_SIZE);
+        return flash_scan_fw_version(port, phone, 0x213FC000, BLOCK_SIZE); // Z310
     }
-    else if (phone->chip_id == DB2010_2)
+    else if (phone->chip_id == DB2000)
     {
-        return flash_scan_fw_version(port, phone, 0x44880000, 16 * BLOCK_SIZE);
+        if (flash_scan_fw_version(port, phone, 0x21A00000, 4 * BLOCK_SIZE) == 0) // W900
+            return FLASH_OK;
+
+        return flash_scan_fw_version(port, phone, 0x21400000, 4 * BLOCK_SIZE); // // K600/K608/V600
+    }
+    else if (phone->chip_id == DB2010_1 || phone->chip_id == DB2010_2)
+    {
+        if (flash_scan_fw_version(port, phone, 0x44880000, 16 * BLOCK_SIZE) == 0)
+            return FLASH_OK;
+
+        if (flash_scan_fw_version(port, phone, 0x447C0000, 4 * BLOCK_SIZE) == 0)
+            return FLASH_OK;
+
+        return flash_scan_fw_version(port, phone, 0x44B00000, 4 * BLOCK_SIZE);
     }
     else if (phone->chip_id == DB2020)
     {
-        return flash_scan_fw_version(port, phone, 0x45B10000, 8 * BLOCK_SIZE);
+        return flash_scan_fw_version(port, phone, 0x45B00000, 8 * BLOCK_SIZE);
     }
 
     printf("Unsupported chip id: %08X\n", phone->chip_id);
@@ -969,7 +914,7 @@ int flash_vkp(struct sp_port *port, const char *filename, vkp_patch_t *patch,
     // patch already installed
     if (unmatched && contrmatched == (int)patch->patch.count)
     {
-        user_choice_t choice = ask_user_choice(filename, "[u]ninstall / [s]kip / [a]bort");
+        user_choice_t choice = ask_user_choice("patch installed, ", "[u]ninstall / [s]kip / [a]bort");
 
         if (choice == CHOICE_UNINSTALL)
         {

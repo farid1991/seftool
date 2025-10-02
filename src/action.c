@@ -103,7 +103,7 @@ int pnx_send_packet(struct sp_port *port,
         return -1;
 
     uint8_t hdr[3];
-    int rcv_len = serial_wait_packet(port, hdr, sizeof(hdr), 10 * TIMEOUT);
+    int rcv_len = serial_read(port, hdr, sizeof(hdr), 10 * TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -111,7 +111,7 @@ int pnx_send_packet(struct sp_port *port,
         return -1;
 
     uint8_t len[4];
-    rcv_len = serial_wait_packet(port, len, sizeof(len), 10 * TIMEOUT);
+    rcv_len = serial_read(port, len, sizeof(len), 10 * TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -119,7 +119,7 @@ int pnx_send_packet(struct sp_port *port,
     if (datasize > (int)resp_max)
         return -1;
 
-    rcv_len = serial_wait_packet(port, resp, datasize, 10 * TIMEOUT);
+    rcv_len = serial_read(port, resp, datasize, 10 * TIMEOUT);
     if (rcv_len != datasize)
         return -1;
 
@@ -338,8 +338,19 @@ int action_identify(struct sp_port *port, struct phone_info *phone)
 
 int action_flash_fw(struct sp_port *port, struct phone_info *phone, const char *main_fw, const char *fs_fw)
 {
-    if (loader_send_oflash_ldr(port, phone) != 0)
-        return -1;
+    if (phone->erom_cid == 49 &&
+        (phone->chip_id == DB2000 || phone->chip_id == DB2010_1 || phone->chip_id == DB2010_2) &&
+        phone->break_rsa == 1)
+    {
+        printf("Bypass RSA\n");
+        if (loader_send_bflash_ldr(port, phone) != 0)
+            return -1;
+    }
+    else
+    {
+        if (loader_send_oflash_ldr(port, phone) != 0)
+            return -1;
+    }
 
     if (flash_babe_fw(port, main_fw, 1) != 0)
         return -1;
@@ -358,7 +369,7 @@ int action_read_flash(struct sp_port *port, struct phone_info *phone, uint32_t a
     if (loader_send_bflash_ldr(port, phone) != 0)
         return -1;
 
-    if (phone->anycid == 1)
+    if (phone->anycid == 1 || phone->break_rsa == 1)
     {
         if (flash_restore_boot_area(port, phone) != 0)
             return -1;
@@ -427,7 +438,7 @@ int action_exec_scripts(struct sp_port *port, struct phone_info *phone,
         if (loader_send_bflash_ldr(port, phone) != 0)
             return -1;
 
-        if (phone->anycid == 1)
+        if (phone->anycid == 1 || phone->break_rsa == 1)
         {
             if (flash_restore_boot_area(port, phone) != 0)
                 return -1;
@@ -461,7 +472,7 @@ int action_exec_scripts(struct sp_port *port, struct phone_info *phone,
                 vkp_patch_free(&patch);
                 continue; // keep processing others
             }
-            if (vkp_rc != FLASH_VKP_OK)
+            if (vkp_rc == FLASH_VKP_ERR)
             {
                 vkp_patch_free(&patch);
                 rc = -1;

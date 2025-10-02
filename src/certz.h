@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #pragma pack(push, 1)
-struct A1CERT
+struct a1_cert
 {
     uint32_t keysize;      // 1
     char name[0x40];       //
@@ -33,6 +33,6 @@ struct certz_t
     uint8_t cert[0x1E8];
 };
 
-extern struct certz_t certz[51];
+extern struct certz_t certz[49];
 
 #endif // certz_h

@@ -53,6 +53,10 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/rest
             ${CMAKE_BINARY_DIR}/rest
+
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/break49
+            ${CMAKE_BINARY_DIR}/break49
     )
 else()
     add_custom_command(TARGET seftool POST_BUILD
@@ -64,5 +68,9 @@ else()
         COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_SOURCE_DIR}/rest
             ${CMAKE_BINARY_DIR}/rest
+
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${CMAKE_SOURCE_DIR}/break49
+            ${CMAKE_BINARY_DIR}/break49
     )
 endif()

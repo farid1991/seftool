@@ -16,6 +16,7 @@
 #define DB2010_2 0x8040
 #define DB2020 0x9900
 #define PNX5230 0xD000
+#define DB3150 0xC802
 
 extern int loader_type;
 
@@ -29,6 +30,7 @@ struct phone_info
     char phone_name[8];
     char fw_version[64];
     int is_z1010;
+    int baudrate;
 
     // EROM
     int erom_color;
@@ -47,19 +49,24 @@ struct phone_info
 
     // state
     int qhldr_sent;
-    int skip_cmd;
     int skiperrors;
-    int anycid;
     int save_as_babe;
+    int anycid;
+
+    // break-rsa
+    int break_rsa;
+    char bootname[32];
+    char osename[32];
+    char hdrname[32];
 };
 
-enum color_e
-{
-    BLUE,
-    BROWN,
-    RED,
-    BLACK
-};
+// enum color_e
+// {
+//     BLUE,
+//     BROWN,
+//     RED,
+//     BLACK
+// };
 
 // ---------- byte helper ----------
 uint8_t get_byte(uint8_t *p);
@@ -71,11 +78,15 @@ void set_word(uint8_t *p, uint32_t v);
 
 void decode_bcd(const uint8_t *in, int len, char *out, size_t out_size);
 
+const char *get_speed_chars(int baudrate);
 const char *get_flash_vendor(uint16_t flashid);
 const char *get_chipset_name(uint16_t chip_id);
 const char *color_get_state(int color_code);
 const char *color_get_name(int color_code);
+uint32_t get_platform(uint16_t chip_id);
 
 int scan_fw_version(uint8_t *buf, size_t size, char *fw_id, size_t fw_id_size);
+
+uint8_t *load_file(const char *path, size_t *size);
 
 #endif // common_h

@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "babe.h"
 #include "common.h"
 
 // ---------- byte helper ----------
@@ -108,6 +109,26 @@ const char *get_chipset_name(uint16_t chip_id)
     }
 }
 
+uint32_t get_platform(uint16_t chip_id)
+{
+    switch (chip_id)
+    {
+    case DB2000:
+        return CHIPID_DB2000;
+    case DB2010_1:
+    case DB2010_2:
+        return CHIPID_DB2010;
+    case DB2020:
+        return CHIPID_DB2020;
+    case PNX5230:
+        return CHIPID_PNX5230;
+    case DB3150:
+        return CHIPID_DB3150;
+    default:
+        return 0;
+    }
+}
+
 const char *color_get_state(int color_code)
 {
     switch (color_code)
@@ -147,7 +168,7 @@ int scan_fw_version(uint8_t *buf, size_t size, char *fw_id, size_t fw_id_size)
     int found = -1;
     for (size_t i = 0; i < size - 3; i++)
     {
-        if (memcmp(&buf[i], "prgCXC", 6) == 0 || // DB201X
+        if (memcmp(&buf[i], "prgCXC", 6) == 0 || // DB20XX
             memcmp(&buf[i], "prg120", 6) == 0)   // PNX5230
         {
             found = (int)i;
@@ -190,4 +211,43 @@ int scan_fw_version(uint8_t *buf, size_t size, char *fw_id, size_t fw_id_size)
     }
 
     return 0;
+}
+
+// helper file loader
+uint8_t *load_file(const char *path, size_t *size)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f)
+        return NULL;
+
+    fseek(f, 0, SEEK_END);
+    *size = ftell(f);
+    rewind(f);
+
+    uint8_t *buf = malloc(*size);
+    if (!buf)
+    {
+        fclose(f);
+        return NULL;
+    }
+
+    fread(buf, 1, *size, f);
+    fclose(f);
+    return buf;
+}
+
+const char *get_speed_chars(int baudrate)
+{
+    switch (baudrate)
+    {
+    case 9600:   return "S0";
+    case 19200:  return "S1";
+    case 38400:  return "S2";
+    case 57600:  return "S3";
+    case 115200: return "S4";
+    case 230400: return "S5";
+    case 460800: return "S6";
+    case 921600: return "S7";
+    default:     return NULL;
+    }
 }
