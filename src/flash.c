@@ -107,7 +107,7 @@ int flash_babe(struct sp_port *port, uint8_t *babe_buf, size_t size, int flashfu
         if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
             return FLASH_ERROR;
 
-        if (serial_wait_ack(port, TIMEOUT) < 0)
+        if (serial_wait_ack(port, 5 * TIMEOUT) < 0)
             return FLASH_ERROR;
 
         if (bsize > BLOCK_SIZE)
@@ -128,7 +128,7 @@ int flash_babe(struct sp_port *port, uint8_t *babe_buf, size_t size, int flashfu
                 return FLASH_ERROR;
             if (serial_write_chunks(port, data_buf, cmd_len, 0x400) < 0)
                 return FLASH_ERROR;
-            if (serial_wait_ack(port, TIMEOUT) < 0)
+            if (serial_wait_ack(port, 5 * TIMEOUT) < 0)
                 return FLASH_ERROR;
 
             curpos += tsize;
@@ -137,7 +137,7 @@ int flash_babe(struct sp_port *port, uint8_t *babe_buf, size_t size, int flashfu
 
         // wait for block reply
         uint8_t resp[6];
-        int rcv_len = serial_read(port, resp, sizeof(resp), TIMEOUT);
+        int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 25 * TIMEOUT);
         if (rcv_len <= 0)
             return FLASH_ERROR;
 
@@ -168,8 +168,8 @@ int flash_babe(struct sp_port *port, uint8_t *babe_buf, size_t size, int flashfu
         if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
             return FLASH_ERROR;
 
-        uint8_t resp[8];
-        int rcv_len = serial_read(port, resp, sizeof(resp), 100 * TIMEOUT); // 10s timeout
+        uint8_t resp[0x20];
+        int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 100 * TIMEOUT); // 10s timeout
         if (rcv_len <= 0)
             return FLASH_ERROR;
 
@@ -179,7 +179,7 @@ int flash_babe(struct sp_port *port, uint8_t *babe_buf, size_t size, int flashfu
 
         if (repl.cmd != 0x12)
         {
-            printf("unexpected reply during final check: 0x%02X\n", repl.cmd);
+            printf("\nUnexpected reply during final check: 0x%02X\n", repl.cmd);
             return FLASH_ERROR;
         }
         if (repl.length != 1 || repl.data[0] != 0x00)
@@ -194,14 +194,14 @@ int flash_babe(struct sp_port *port, uint8_t *babe_buf, size_t size, int flashfu
     return FLASH_OK;
 }
 
-int flash_babe_fw(struct sp_port *port, const char *filename, int flashfull)
+int flash_babe_fw(struct sp_port *port, const char *filename, int fw_check)
 {
     printf("\nflashing babe: %s\n", filename);
 
     size_t size;
     uint8_t *buffer = load_file(filename, &size);
 
-    int babe = babe_check(buffer, size, CHECKBABE_CHECKFULL);
+    int babe = babe_check(buffer, size, fw_check);
     switch (babe)
     {
     case CHECKBABE_NOTBABE:
@@ -229,7 +229,7 @@ int flash_babe_fw(struct sp_port *port, const char *filename, int flashfull)
         goto exit_error;
     }
 
-    if (flash_babe(port, buffer, size, flashfull) == 0)
+    if (flash_babe(port, buffer, size, 1) == 0)
     {
         free(buffer);
         return FLASH_OK;
@@ -436,14 +436,17 @@ int flash_raw(struct sp_port *port, const char *filename, uint32_t raw_addr)
 
 int flash_restore_boot_area(struct sp_port *port, struct phone_info *phone)
 {
-    if (flash_detect_fw_version(port, phone) != 0)
-        return -1;
+    if (check_restore_file(phone) == 0)
+    {
+        if (flash_detect_fw_version(port, phone) != 0)
+            return -1;
+    }
 
-    printf("Restoring boot area\n");
+    printf("\nRestoring boot area\n");
 
     // Build expected REST filename
     char restfile[256];
-    snprintf(restfile, sizeof(restfile), "./rest/%s.rest", phone->fw_version);
+    snprintf(restfile, sizeof(restfile), "./rest/%s.rest", phone->rest_name);
 
     // Check if file exists
     FILE *frest = fopen(restfile, "rb");
@@ -472,7 +475,7 @@ int flash_restore_boot_area(struct sp_port *port, struct phone_info *phone)
         fprintf(stderr, "Missing REST file: %s\n", restfile);
         // Try RAW
         char raw_file[256];
-        snprintf(raw_file, sizeof(raw_file), "./rest/%s.raw", phone->fw_version);
+        snprintf(raw_file, sizeof(raw_file), "./rest/%s.raw", phone->rest_name);
         FILE *fraw = fopen(raw_file, "rb");
         if (!fraw)
         {
@@ -644,11 +647,11 @@ int flash_scan_fw_version(struct sp_port *port, struct phone_info *phone,
         printf("\nFW Version: %s\n", fw_id);
 
         size_t len = strlen(fw_id);
-        if (len >= sizeof(phone->fw_version))
-            len = sizeof(phone->fw_version) - 1;
+        if (len >= sizeof(phone->rest_name))
+            len = sizeof(phone->rest_name) - 1;
 
-        memcpy(phone->fw_version, fw_id, len);
-        phone->fw_version[len] = '\0';
+        memcpy(phone->rest_name, fw_id, len);
+        phone->rest_name[len] = '\0';
 
         free(buf);
         return FLASH_OK;
@@ -686,7 +689,7 @@ int flash_detect_fw_version(struct sp_port *port, struct phone_info *phone)
     }
     else if (phone->chip_id == DB2020)
     {
-        return flash_scan_fw_version(port, phone, 0x45B00000, 8 * BLOCK_SIZE);
+        return flash_scan_fw_version(port, phone, 0x45B00000, 16 * BLOCK_SIZE);
     }
 
     printf("Unsupported chip id: %08X\n", phone->chip_id);

@@ -1,10 +1,10 @@
 ```
-   _____ ______ ______ _______          _ 
-  / ____|  ____|  ____|__   __|        | |
- | (___ | |__  | |__     | | ___   ___ | |
-  \___ \|  __| |  __|    | |/ _ \ / _ \| |
-  ____) | |____| |       | | (_) | (_) | |
- |_____/|______|_|       |_|\___/ \___/|_|                     
+███████╗███████╗███████╗████████╗ ██████╗  ██████╗ ██╗     
+██╔════╝██╔════╝██╔════╝╚══██╔══╝██╔═══██╗██╔═══██╗██║     
+███████╗█████╗  █████╗     ██║   ██║   ██║██║   ██║██║     
+╚════██║██╔══╝  ██╔══╝     ██║   ██║   ██║██║   ██║██║     
+███████║███████╗██║        ██║   ╚██████╔╝╚██████╔╝███████╗
+╚══════╝╚══════╝╚═╝        ╚═╝    ╚═════╝  ╚═════╝ ╚══════╝               
 ```
                                           
 # SEFTool / SE Flash Tool
@@ -21,6 +21,7 @@ Supports firmware flashing and patching, GDFS (phone data) backup/restore, flash
 - Read raw flash memory
 - Backup and restore GDFS (phone settings/data)
 - Unlock phone (usercode, simlock planned)
+- Patch firmware
 - Cross-platform (Linux/Windows, built with CMake + libserialport)
 
 ---
@@ -32,20 +33,62 @@ Supports firmware flashing and patching, GDFS (phone data) backup/restore, flash
 - C compiler:
   - **Linux/macOS**: GCC or Clang
   - **Windows**: MinGW (recommended)
-- [libserialport](https://sigrok.org/wiki/Libserialport) installed and available
-  - **Debian/Ubuntu**: `sudo apt install libserialport-dev`
-  - **Fedora**: `sudo dnf install libserialport-devel`
-  - **Arch Linux**: `sudo pacman -S libserialport`
-  - **macOS (Homebrew)**: `brew install libserialport`
-  - **Windows (MSYS2 MinGW shell)**: `pacman -S mingw-w64-x86_64-libserialport`
+
+### Dependencies
+Required runtime/build libraries:
+- [zlib](https://zlib.net/)
+- [bzip2](https://sourceware.org/bzip2/)
+- [minizip](https://github.com/domoticz/minizip)
+- [libserialport](https://sigrok.org/wiki/Libserialport)
+
+### Install packages per platform:
+
+- **Debian / Ubuntu**
+```sh
+sudo apt update
+sudo apt install build-essential cmake pkg-config libserialport-dev zlib1g-dev libbz2-dev libminizip-dev
+```
+
+- **Fedora**
+```sh
+sudo dnf install gcc make cmake pkg-config libserialport-devel zlib-devel bzip2-devel minizip-devel
+```
+
+- **Arch Linux**
+```sh
+sudo pacman -S --needed base-devel cmake libserialport zlib bzip2 minizip
+```
+
+- **macOS (Homebrew)**
+```sh
+brew install cmake pkg-config libserialport zlib bzip2 minizip
+```
+
+- **Windows (MSYS2 / MinGW64)**
+```sh
+pacman -Syu
+pacman -S --needed mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake \
+       mingw-w64-x86_64-libserialport \
+       mingw-w64-x86_64-zlib mingw-w64-x86_64-bzip2 mingw-w64-x86_64-minizip
+```
 
 ### Build Steps
+#### Basic build steps (works on Linux/macOS and MSYS2 MinGW when using the appropriate shell):
 ```sh
 git clone https://github.com/farid1991/seftool.git
 cd seftool
 mkdir build && cd build
 cmake ..
 cmake --build . --config Release
+```
+
+#### Windows (MSYS2 MinGW64) — recommended in the MinGW64 shell:
+```sh
+git clone https://github.com/farid1991/seftool.git
+cd seftool
+mkdir build && cd build
+/mingw64/bin/cmake -G "MinGW Makefiles" ..
+mingw32-make
 ```
 
 ---
@@ -60,13 +103,15 @@ Options:
   -b, --baud <rate>       Baudrate (default: 115200)
   -a, --action <action>   Action:
                           identify
-                          flash <main> xor <fs>
+                          flash [main <file>] [fs <file>] [cda <file>]
                           read-flash start <addr> size <bytes> OR block <count>
                             [save-as-babe]
                           read-gdfs
                           write-gdfs <filename>
                           write-script <file1> [file2 ...]
                           unlock <usercode|simlock>
+                          upload-fs src <local path/file/zip> [dest <fs path>]
+                          upload-anycid
                           convert babe2raw <filename>
                           convert raw2babe <filename> <addr>
 Global options:
@@ -81,16 +126,17 @@ Global options:
 ## Supported devices
 
 | Action             | DB2000           | DB201x                | DB2020         | PNX5230 |
-|:-------------------|:----------------:|:---------------------:|:--------------:|:-------:|
-| identify           | OK               | OK                    | OK             | OK      |
-| flash              | OK (except Z1010)| OK                    | OK             | OK      |
-| read-flash         | CID29,36,49      | CID29,36,49 + ANYCID  | BROWN49+ANYCID | ANYCID  |
-| read-gdfs          | OK               | OK                    | OK             | OK      |
-| write-gdfs         | OK               | OK                    | OK             | OK      |
-| write-script[gdfs] | OK               | OK                    | OK             | OK      |
-| write-script[vkp]  | CID36,49         | CID29,36,49 + ANYCID  | BROWN49+ANYCID | ANYCID  |
-| unlock-usercode    | OK               | OK                    | OK             | OK      |
-| unlock-simlock     | TODO             | TODO                  | TODO           | TODO    |
+|:-------------------|:-----------:|:---------------------:|:--------------:|:-------:|
+| identify           | OK          | OK                    | OK             | OK      |
+| flash              | OK          | OK                    | OK             | OK      |
+| read-flash         | CID29,36,49 | CID29,36,49 + ANYCID  | BROWN49+ANYCID | ANYCID  |
+| read-gdfs          | OK          | OK                    | OK             | OK      |
+| write-gdfs         | OK          | OK                    | OK             | OK      |
+| write-script[gdfs] | OK          | OK                    | OK             | OK      |
+| write-script[vkp]  | CID29,36,49 | CID29,36,49 + ANYCID  | BROWN49+ANYCID | ANYCID  |
+| unlock-usercode    | OK          | OK                    | OK             | OK      |
+| unlock-simlock     | TODO        | TODO                  | TODO           | TODO    |
+| upload-fs          | OK          | OK                    | OK             | OK      |
 
 
 ---
@@ -100,7 +146,7 @@ Global options:
 ### Identify phone (identify)
 Backup security units on first operation.
 ```sh
-$ ./seftool -p COM2 -b 921600 -a identify
+$ .\seftool.exe -p COM2 -b 921600 -a identify
 ```
 <details>
 <summary>output</summary>
@@ -149,17 +195,27 @@ Support only firmware with BABE format. bin, ssw, mbn, fbn.
 
 #### Flash main + filesystem firmware:
 ```sh
-$ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash main.mbn fs.fbn
+$ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash main main.mbn fs fs.fbn
+```
+
+#### Flash main + filesystem firmware + CDA upload:
+```sh
+$ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash main main.mbn fs fs.fbn cda cda.zip
 ```
 
 #### Flash main only:
 ```sh
-$ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash main.mbn
+$ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash main main.mbn
 ```
 
 #### Flash filesystem only:
 ```sh
-$ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash fs.fbn
+$ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash fs fs.fbn
+```
+
+#### Flash (upload) CDA only:
+```sh
+$ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash cda cda.zip
 ```
 
 #### Cross-flash DB201x CID49 (example: K310 → W200)
@@ -167,19 +223,19 @@ Some DB201x phones (e.g. K310) can be flashed with firmware from a different mod
 This requires enabling RSA-break, otherwise the flash is rejected due to CID mismatch.
 
 ```sh
-$ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash w200_main.mbn w200_fs.fbn --break-rsa
+$ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash main w200_main.mbn fs w200_fs.fbn cda w200_cda.zip --break-rsa
 ```
 
 ### Read flash (read-flash):
 
 #### Read 512 KB starting at 0x44000000 and save as RAW (.bin):
 ```sh
-$ ./seftool -p COM2 -b 921600 -a read-flash start 0x44000000 size 0x80000
+$ .\seftool.exe -p COM2 -b 921600 -a read-flash start 0x44000000 size 0x80000
 ```
 
 #### Read 0x10 blocks starting at 0x20100000 with anycid:
 ```sh
-$ ./seftool -p COM2 -b 921600 -a read-flash start 0x20100000 block 0x10 --anycid
+$ .\seftool.exe -p COM2 -b 921600 -a read-flash start 0x20100000 block 0x10 --anycid
 ```
 
 #### Read 0x40000 bytes starting at 0x20100000 and save as BABE (.ssw):
@@ -189,32 +245,70 @@ seftool -p COM2 -b 921600 -a read-flash start 0x20100000 size 0x40000 save-as-ba
 
 ### Backup GDFS (read-gdfs):
 ```sh
-$ ./seftool -p COM2 -b 921600 -a read-gdfs
+$ .\seftool.exe -p COM2 -b 921600 -a read-gdfs
 ```
 
 ### Restore GDFS from file (write-gdfs):
 ```sh
-$ ./seftool -p COM2 -b 921600 -a write-gdfs backup/gdfs.bin
+$ .\seftool.exe -p COM2 -b 921600 -a write-gdfs backup/gdfs.bin
 ```
 
 ### Write GDFS script (write-script):
 ```sh
-$ ./seftool -p COM2 -b 921600 -a write-script secsunitbackup.txt
+$ .\seftool.exe -p COM2 -b 921600 -a write-script secsunitbackup.txt
 ```
 
 ### Write VKP patch (write-script):
 ```sh
-$ ./seftool -p COM2 -b 921600 -a disable_setup_wizard.vkp no_simcard.vkp
+$ .\seftool.exe -p COM2 -b 921600 -a disable_setup_wizard.vkp no_simcard.vkp
 ```
 
 ### Write VKP patch with anycid exploit (write-script):
 ```sh
-$ ./seftool -p COM2 -b 921600 -a disable_setup_wizard.vkp no_simcard.vkp --anycid
+$ .\seftool.exe -p COM2 -b 921600 -a disable_setup_wizard.vkp no_simcard.vkp --anycid
 ```
 
 ### Unlock usercode:
 ```sh
-$ ./seftool -p /dev/ttyUSB0 b 921600 -a unlock usercode
+# Linux
+./seftool -p /dev/ttyUSB0 -b 921600 -a unlock usercode
+
+# Windows:
+.\seftool.exe -p COM2 -b 921600 -a unlock usercode
+```
+
+### Upload filesystem (upload-fs)
+
+#### Upload a local directory or a zip archive to the phone filesystem.
+
+- If `dest` is provided, files are placed under that phone directory.
+- If `dest` is `/` (default), the tool preserves the relative path inside the source directory.
+- You may pass a single directory or a single `.zip` file as the source.
+
+##### Upload a local directory into a specific phone directory:
+```sh
+# Upload local directory "./Z530" into /tpa/preset/system/language on the phone
+.\seftool.exe -p COM2 -b 921600 -a upload-fs src ./Z530 dest /tpa/preset/system/language
+```
+##### Upload a local file(s) into a specific phone directory:
+```sh
+# Upload local file "./file1.txt" "../file2.txt" into /tpa/user/other on the phone
+.\seftool.exe -p COM2 -b 921600 -a upload-fs src ./file1.txt ../file2.txt dest /tpa/user/other
+```
+##### Upload a ZIP archive and extract its contents on the fly (dest defaults to root):
+```sh
+# Extract ZIP to ./tmp then upload files preserving internal paths (default dest is root '/')
+.\seftool.exe -p COM2 -b 921600 -a upload-fs src ./Z530i_CDA102462_75_R1A_Generic_Trade_Indonesia.zip
+```
+##### Upload from local directory but place all files directly under the given destination:
+```sh
+# Put the contents of ./lang directly into /tpa/preset/system/language
+./seftool -p /dev/ttyUSB0 -b 921600 -a upload-fs src ./lang dest /tpa/preset/system/language
+```
+
+### Upload anycid bypass package (upload-anycid) : auto detection, do identify first
+```sh
+./seftool -p /dev/ttyUSB0 -b 921600 -a upload-anycid
 ```
 
 ### Convert firmware(BABE format) to RAW binary:
@@ -243,23 +337,23 @@ Using `seftool` may permanently damage your device if used incorrectly.
 ## Notes
 * Do identify first before other operation
 * Backups are automatically saved in a backup/ directory when using identify, read-gdfs, write-gdfs, or read-flash.
-* Sim unlock is not implemented yet.
 * Use a stable power supply(battery 50%++) and reliable serial connection when flashing to avoid bricking the phone.
 * **DB2000** has max **460800** baudrate.
-* **Z1010** flash MAIN is incorrect.
-* **PNX5230** read flash use `anycid` method, restore firmware is not implemented yet.
-* **ANYCID** only used for "read-flash" right now.
 * Restore firmware files are included in `./rest` (packaged alongside the executable).  
   `.rest` files are generated with **mkrest2** by **den_po**.
+* Anycid package files are included in `./anycid` (packaged alongside the executable).
 ---
 
 ## TODO
-1. CDA upload (flash customization).
+1. ~~CDA upload (flash customization).~~
 2. Complete operation for phone with CID16 and ~~CID29~~ (DB2000 & DB2010)
 3. ~~VKP patching~~
 4. ~~Break RSA RED49 DB2000 & DB2010~~
-5. Patch DB2000 CID16 & CID29
-6. ...
+5. ~~Patch DB2000 & CID29~~
+6. Read file(s) / directory from FS
+7. Implement *mkrest* action
+8. SIM unlock by patch
+9. ...
 
 ---
 
@@ -289,4 +383,4 @@ Please follow existing code style (C99, consistent formatting, warnings enabled)
 - **B-Con** – [crypto-algorithms](https://github.com/B-Con/crypto-algorithms) (SHA1 implementation)
 
 ## License
-MIT License – free to use and modify.
+[MIT License](LICENSE) – free to use and modify.

@@ -212,6 +212,10 @@ int erom_get_info(struct sp_port *port, struct phone_info *phone)
 
 int connection_open(struct sp_port *port, struct phone_info *phone)
 {
+    phone->qhldr_sent = 0;
+    phone->break_cid29 = 0;
+    phone->break_cid36 = 0;
+
     if (serial_open(port) != 0)
         return -1;
     if (wait_for_Z(port) != 0)

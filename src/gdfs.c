@@ -11,7 +11,7 @@
 #include "serial.h"
 
 int gdfs_read_var(struct sp_port *port, struct gdfs_data_t *gdfs, int gd_index,
-                         uint8_t block, uint8_t lsb, uint8_t msb)
+                  uint8_t block, uint8_t lsb, uint8_t msb)
 {
     uint8_t cmd_buf[64];
     int cmd_len = cmd_encode_read_gdfs(block, lsb, msb, cmd_buf);
@@ -252,9 +252,7 @@ int gdfs_dump_sec_units(struct sp_port *port, struct phone_info *phone, const ch
 
 int gdfs_get_cxc_article(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs)
 {
-    uint8_t block = 0;
-    uint8_t msb = 0;
-    uint8_t lsb = 0;
+    uint8_t block = 0, msb = 0, lsb = 0;
 
     switch (phone->chip_id)
     {
@@ -535,7 +533,8 @@ int gdfs_unlock_usercode(struct sp_port *port)
     uint8_t cmd_buf[64];
     uint8_t resp[64];
 
-    int cmd_len = cmd_encode_csloader_packet(0x01, 0x0D, NULL, 0, cmd_buf);
+    int cmd_len = cmd_encode_csloader_packet(CMD_CSLOADER, CMD_CS_RESETLOCK,
+                                             NULL, 0, cmd_buf);
     if (cmd_len <= 0)
         return -1;
 
@@ -569,7 +568,8 @@ int gdfs_terminate_access(struct sp_port *port)
 
     // shutdown
     printf("Terminating GDFS server... ");
-    int cmd_len = cmd_encode_csloader_packet(0x01, 0x08, NULL, 0, cmd_buf);
+    int cmd_len = cmd_encode_csloader_packet(CMD_CSLOADER, CMD_CS_SHUTDOWN,
+                                             NULL, 0, cmd_buf);
     if (cmd_len <= 0)
         return -1;
 

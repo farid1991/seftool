@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 #include <libserialport.h>
 
 #ifdef _WIN32
@@ -11,8 +12,10 @@
 #include <unistd.h>
 #endif
 
+#include "babe.h"
 #include "common.h"
 #include "cmd.h"
+#include "connection.h"
 #include "csloader.h"
 #include "flash.h"
 #include "loader.h"
@@ -41,6 +44,10 @@ action_t action_from_string(const char *a)
         return ACT_UNLOCK;
     if (strcmp(a, "convert") == 0)
         return ACT_CONVERT;
+    if (strcmp(a, "upload-fs") == 0)
+        return ACT_UPLOAD_FS;
+    if (strcmp(a, "upload-anycid") == 0)
+        return ACT_UPLOAD_ANYCID;
     return ACT_NONE;
 }
 
@@ -91,41 +98,6 @@ int action_unlock_usercode(struct sp_port *port, struct phone_info *phone)
     }
 }
 
-// Return number of bytes received, or -1 on error
-int pnx_send_packet(struct sp_port *port,
-                    uint8_t block, uint8_t msb, uint8_t lsb,
-                    uint8_t *resp, size_t resp_max)
-{
-    uint8_t cmd_buf[7] = {'I', 'C', 'G', '1', block, lsb, msb};
-
-    // send data
-    if (serial_write(port, cmd_buf, sizeof(cmd_buf)) < 0)
-        return -1;
-
-    uint8_t hdr[3];
-    int rcv_len = serial_read(port, hdr, sizeof(hdr), 10 * TIMEOUT);
-    if (rcv_len <= 0)
-        return -1;
-
-    if (hdr[0] != block || hdr[1] != lsb || hdr[2] != msb)
-        return -1;
-
-    uint8_t len[4];
-    rcv_len = serial_read(port, len, sizeof(len), 10 * TIMEOUT);
-    if (rcv_len <= 0)
-        return -1;
-
-    int datasize = get_word(len);
-    if (datasize > (int)resp_max)
-        return -1;
-
-    rcv_len = serial_read(port, resp, datasize, 10 * TIMEOUT);
-    if (rcv_len != datasize)
-        return -1;
-
-    return datasize;
-}
-
 int dump_sec_units_pnx(struct sp_port *port, const char *backup_name)
 {
     FILE *f = fopen(backup_name, "a");
@@ -155,8 +127,8 @@ int dump_sec_units_pnx(struct sp_port *port, const char *backup_name)
 
     for (size_t i = 0; i < sizeof(blocks) / sizeof(blocks[0]); ++i)
     {
-        len = pnx_send_packet(port, blocks[i].block, blocks[i].msb, blocks[i].lsb,
-                              resp, sizeof(resp));
+        len = loader_send_packet_pnx(port, blocks[i].block, blocks[i].msb, blocks[i].lsb,
+                                     resp, sizeof(resp));
         if (len < 0)
         {
             fclose(f);
@@ -183,14 +155,14 @@ int action_identify_pnx(struct sp_port *port, struct phone_info *phone, struct g
 
     // Phone name
     uint8_t resp[0x800];
-    int len = pnx_send_packet(port, 0x02, 0x0D, 0xBB, resp, sizeof(resp));
+    int len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xBB, resp, sizeof(resp));
     if (len < 0)
         return -1;
     wcstombs(gdfs->phone_name, (wchar_t *)resp, len);
     printf("Model: %s\n", gdfs->phone_name);
 
     // Brand
-    len = pnx_send_packet(port, 0x02, 0x0D, 0xE5, resp, sizeof(resp));
+    len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xE5, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->brand, (char *)resp, len);
@@ -198,15 +170,17 @@ int action_identify_pnx(struct sp_port *port, struct phone_info *phone, struct g
     printf("Brand: %s\n", gdfs->brand);
 
     // CXC article
-    len = pnx_send_packet(port, 0x02, 0x0E, 0x15, resp, sizeof(resp));
+    len = loader_send_packet_pnx(port, 0x02, 0x0E, 0x15, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->cxc_article, (char *)resp, len);
     gdfs->cxc_article[len] = '\0';
     printf("MAPP CXC article: %s\n", gdfs->cxc_article);
+    parse_cxc_article_to_anycid_pkg(phone, gdfs->cxc_article);
+    parse_cxc_article_to_rest_name(phone, gdfs->cxc_article);
 
     // CXC version
-    len = pnx_send_packet(port, 0x02, 0x0E, 0x16, resp, sizeof(resp));
+    len = loader_send_packet_pnx(port, 0x02, 0x0E, 0x16, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->cxc_version, (char *)resp, len);
@@ -214,7 +188,7 @@ int action_identify_pnx(struct sp_port *port, struct phone_info *phone, struct g
     printf("MAPP CXC version: %s\n", gdfs->cxc_version);
 
     // Language package
-    len = pnx_send_packet(port, 0x02, 0x0D, 0xE7, resp, sizeof(resp));
+    len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xE7, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->langpack, (char *)resp, len);
@@ -222,7 +196,7 @@ int action_identify_pnx(struct sp_port *port, struct phone_info *phone, struct g
     printf("Language package: %s\n", gdfs->langpack);
 
     // CDA article
-    len = pnx_send_packet(port, 0x02, 0x0D, 0xE8, resp, sizeof(resp));
+    len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xE8, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->cda_article, (char *)resp, len);
@@ -230,7 +204,7 @@ int action_identify_pnx(struct sp_port *port, struct phone_info *phone, struct g
     printf("CDA article: %s\n", gdfs->cda_article);
 
     // CDA revision
-    len = pnx_send_packet(port, 0x02, 0x0D, 0xE9, resp, sizeof(resp));
+    len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xE9, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->cda_revision, (char *)resp, len);
@@ -238,7 +212,7 @@ int action_identify_pnx(struct sp_port *port, struct phone_info *phone, struct g
     printf("CDA revision: %s\n", gdfs->cda_revision);
 
     // Default article
-    len = pnx_send_packet(port, 0x02, 0x0D, 0xEA, resp, sizeof(resp));
+    len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xEA, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->default_article, (char *)resp, len);
@@ -246,7 +220,7 @@ int action_identify_pnx(struct sp_port *port, struct phone_info *phone, struct g
     printf("Default article: %s\n", gdfs->default_article);
 
     // Default version
-    len = pnx_send_packet(port, 0x02, 0x0D, 0xEB, resp, sizeof(resp));
+    len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xEB, resp, sizeof(resp));
     if (len < 0)
         return -1;
     strncpy(gdfs->default_version, (char *)resp, len);
@@ -254,7 +228,7 @@ int action_identify_pnx(struct sp_port *port, struct phone_info *phone, struct g
     printf("Default version: %s\n", gdfs->default_version);
 
     // SIMLOCK (binary data)
-    len = pnx_send_packet(port, 0x00, 0x00, 0x06, resp, sizeof(resp));
+    len = loader_send_packet_pnx(port, 0x00, 0x00, 0x06, resp, sizeof(resp));
     if (len < 0)
         return -1;
     gdfs_parse_simlockdata(gdfs, resp);
@@ -267,6 +241,14 @@ int action_identify_pnx(struct sp_port *port, struct phone_info *phone, struct g
     {
         dump_sec_units_pnx(port, backup_path);
     }
+
+    if (check_restore_file(phone))
+        printf("Restore firmware: ./rest/%s.rest\n", phone->rest_name);
+    else
+        printf("Restore firmware not found\n");
+
+    if (check_anycid_pkg(phone))
+        printf("Anycid package: ./anycid/%s.zip\n\n", phone->anycid_target);
 
     return 0;
 }
@@ -292,10 +274,12 @@ int action_identify(struct sp_port *port, struct phone_info *phone)
     gdfs_get_brand(port, phone, &gdfs);
     printf("Brand: %s\n", gdfs.brand);
 
-    if (phone->chip_id != DB2000 || phone->chip_id != DB2010_1)
+    if (phone->chip_id > DB2010_1)
     {
         gdfs_get_cxc_article(port, phone, &gdfs);
         printf("MAPP CXC article: %s\n", gdfs.cxc_article);
+        parse_cxc_article_to_anycid_pkg(phone, gdfs.cxc_article);
+        parse_cxc_article_to_rest_name(phone, gdfs.cxc_article);
 
         gdfs_get_cxc_version(port, phone, &gdfs);
         printf("MAPP CXC version: %s\n", gdfs.cxc_version);
@@ -333,31 +317,257 @@ int action_identify(struct sp_port *port, struct phone_info *phone)
         gdfs_dump_sec_units(port, phone, backup_path);
     }
 
+    if (phone->chip_id > DB2010_1 && phone->erom_cid >= 49)
+    {
+        if (check_restore_file(phone))
+            printf("Restore firmware: ./rest/%s.rest\n", phone->rest_name);
+        else
+            printf("Restore firmware not found\n");
+
+        if (check_anycid_pkg(phone))
+            printf("Anycid package: ./anycid/%s.zip\n\n", phone->anycid_target);
+    }
+
     return 0;
 }
 
-int action_flash_fw(struct sp_port *port, struct phone_info *phone, const char *main_fw, const char *fs_fw)
+int action_upload_anycid(struct sp_port *port, struct phone_info *phone)
 {
-    if (phone->erom_cid == 49 &&
-        (phone->chip_id == DB2000 || phone->chip_id == DB2010_1 || phone->chip_id == DB2010_2) &&
-        phone->break_rsa == 1)
+    if (phone->chip_id == DB2000)
     {
-        printf("Bypass RSA\n");
-        if (loader_send_bflash_ldr(port, phone) != 0)
-            return -1;
+        printf("No need to use anycid exploit for DB2000 phone\n");
+        return 0;
     }
-    else
+    if (phone->erom_color == BROWN)
     {
-        if (loader_send_oflash_ldr(port, phone) != 0)
-            return -1;
+        printf("No need to use anycid exploit for BROWN phone\n");
+        return 0;
+    }
+    if ((phone->chip_id == DB2010_1 || phone->chip_id == DB2010_2) &&
+        phone->erom_cid <= 49)
+    {
+        printf("No need to use anycid exploit for DB2010 CID49 RED and lower phone\n");
+        return 0;
     }
 
-    if (flash_babe_fw(port, main_fw, 1) != 0)
+    phone->gdfs_server = 1;
+
+    if (loader_send_csloader(port, phone) != 0)
+        return -1;
+    if (csloader_start_fsx_server(port) != 0)
+        return -1;
+    if (csloader_change_directory(port, "/") != 0)
         return -1;
 
-    if (fs_fw)
+    char anycid_pkg[256];
+    snprintf(anycid_pkg, sizeof(anycid_pkg), "./anycid/%s.zip", phone->anycid_target);
+
+    char platform_pkg[256];
+    snprintf(platform_pkg, sizeof(platform_pkg), "./anycid/%s.zip", get_chipset_name(phone->chip_id));
+
+    if (file_exists(anycid_pkg))
     {
-        if (flash_babe_fw(port, fs_fw, 1) != 0)
+        printf("-> Uploading package: %s,%s\n", platform_pkg, anycid_pkg);
+
+        if (csloader_upload_zip(port, platform_pkg) != 0)
+        {
+            fprintf(stderr, "Error uploading pkg: %s\n", platform_pkg);
+            csloader_shutdown_fsx_server(port);
+            return -1;
+        }
+
+        if (csloader_upload_zip(port, anycid_pkg) != 0)
+        {
+            fprintf(stderr, "Error uploading pkg: %s\n", anycid_pkg);
+            csloader_shutdown_fsx_server(port);
+            return -1;
+        }
+
+        printf("Turn on the phone with simcard installed\n"
+               "executer installed on Games folder\n\n");
+    }
+
+    if (csloader_shutdown_fsx_server(port) != 0)
+        return -1;
+
+    return 0;
+}
+
+int action_upload_to_fs(struct sp_port *port, struct phone_info *phone,
+                        const char **src_files, int src_count, const char *dst_dir)
+{
+    phone->gdfs_server = 1;
+
+    if (loader_send_csloader(port, phone) != 0)
+        return -1;
+    if (csloader_start_fsx_server(port) != 0)
+        return -1;
+    if (csloader_change_directory(port, dst_dir) != 0)
+        return -1;
+
+    for (int i = 0; i < src_count; i++)
+    {
+        const char *src_name = src_files[i];
+
+        if (!file_exists(src_name))
+        {
+            fprintf(stderr, "Warning: %s not found, skipping\n", src_name);
+            continue;
+        }
+
+        printf("\n=== %s (%d/%d) ===\n", src_name, i + 1, src_count);
+
+        if (is_directory(src_name))
+        {
+            printf("-> Uploading directory:\n");
+            if (csloader_upload_directory(port, src_name, "", dst_dir) != 0)
+            {
+                fprintf(stderr, "Error uploading directory: %s\n", src_name);
+                csloader_shutdown_fsx_server(port);
+                return -1;
+            }
+        }
+        else if (ends_with(src_name, ".zip"))
+        {
+            printf("-> Uploading zip:\n");
+            if (csloader_upload_zip(port, src_name) != 0)
+            {
+                fprintf(stderr, "Error uploading zip: %s\n", src_name);
+                csloader_shutdown_fsx_server(port);
+                return -1;
+            }
+        }
+        else
+        {
+            const char *basename = strrchr(src_name, '/');
+            if (!basename)
+                basename = strrchr(src_name, '\\');
+            basename = basename ? basename + 1 : src_name;
+
+            char target_path[512];
+            snprintf(target_path, sizeof(target_path), "%s/%s", dst_dir, basename);
+            normalize_path(target_path);
+
+            size_t filesize = 0;
+            uint8_t *filebuff = load_file(src_name, &filesize);
+            if (!filebuff)
+            {
+                fprintf(stderr, "Failed to read %s\n", src_name);
+                csloader_shutdown_fsx_server(port);
+                return -1;
+            }
+
+            if (filesize == 0)
+            {
+                printf("-> Delete:\n  Phone: %s (filesize is zero)\n", target_path);
+                csloader_delete_file(port, target_path);
+            }
+            else
+            {
+                printf("-> Uploading:\n  Phone: %s\n  Size : %zu bytes\n\n",
+                       target_path, filesize);
+                if (csloader_copy_file(port, target_path, filesize, filebuff) != 0)
+                {
+                    fprintf(stderr, "Error copying file: %s\n", src_name);
+                    free(filebuff);
+                    csloader_shutdown_fsx_server(port);
+                    return -1;
+                }
+            }
+
+            free(filebuff);
+        }
+    }
+
+    if (csloader_shutdown_fsx_server(port) != 0)
+        return -1;
+
+    printf("\nAll uploads complete.\n");
+    return 0;
+}
+
+int action_flash_fw(struct sp_port *port, struct phone_info *phone,
+                    const char *main_fw,
+                    const char *fs_fw,
+                    const char *cda)
+{
+    int fw_flashed = 0;
+    int use_bflash = 0;
+
+    if ((phone->chip_id == DB2000 || phone->chip_id == DB2010_1 || phone->chip_id == DB2010_2) &&
+        phone->erom_cid <= 49 &&
+        phone->break_rsa == 1)
+    {
+        use_bflash = 1;
+    }
+
+    if (phone->erom_color == BROWN)
+        use_bflash = 1;
+
+    if (main_fw || fs_fw)
+    {
+        int fw_chk = CHECKBABE_CHECKFULL;
+        if (use_bflash)
+        {
+            printf("BFLASH\n");
+            if (loader_send_bflash_ldr(port, phone) != 0)
+                return -1;
+            fw_chk = CHECKBABE_CHECKFAST;
+        }
+        else
+        {
+            printf("OFLASH\n");
+            if (loader_send_oflash_ldr(port, phone) != 0)
+                return -1;
+
+            if (phone->erom_cid <= 36 || phone->erom_color == BROWN)
+                fw_chk = CHECKBABE_CHECKFAST;
+        }
+
+        if (main_fw)
+        {
+            if (flash_babe_fw(port, main_fw, fw_chk) != 0)
+                return -1;
+
+            fw_flashed++;
+        }
+
+        if (fs_fw)
+        {
+            if (flash_babe_fw(port, fs_fw, fw_chk) != 0)
+                return -1;
+
+            fw_flashed++;
+        }
+    }
+
+    if (cda)
+    {
+        printf("\n");
+
+        // Restart device before upload CDA package
+        if (fw_flashed)
+        {
+            if (loader_shutdown(port) != 0)
+                return -1;
+
+            struct timespec ts = {0, 2000000}; // 20 ms sleep
+            nanosleep(&ts, NULL);
+            connection_close(port);
+            nanosleep(&ts, NULL);
+
+            printf("\n\nRestarting\n\n");
+
+            /* reopen & handshake */
+            if (connection_open(port, phone) != 0)
+            {
+                fprintf(stderr, "reconnect failed\n");
+                return -1;
+            }
+        }
+
+        const char *src_list[] = {cda};
+        if (action_upload_to_fs(port, phone, src_list, 1, "/") != 0)
             return -1;
     }
 
@@ -450,6 +660,8 @@ int action_exec_scripts(struct sp_port *port, struct phone_info *phone,
         // --- Loop over VKP patches ---
         for (int i = 0; i < nfiles; i++)
         {
+            printf("\n=== Patching %d/%d ===\n", i + 1, nfiles);
+
             const char *fname = filenames[i];
             vkp_patch_t patch;
             vkp_patch_init(&patch);
@@ -483,34 +695,33 @@ int action_exec_scripts(struct sp_port *port, struct phone_info *phone,
         }
 
         printf("\nSummary: %d patched, %d skipped\n\n", patched_count, skipped_count);
+        return rc;
     }
-    else
+
+    // --- CSLOADER once ---
+    if (loader_send_csloader(port, phone) != 0)
+        return -1;
+
+    for (int i = 0; i < nfiles; i++)
     {
-        // --- CSLOADER once ---
-        if (loader_send_csloader(port, phone) != 0)
-            return -1;
+        const char *fname = filenames[i];
+        printf("\n=== %s (%d/%d) ===\n", fname, i + 1, nfiles);
 
-        for (int i = 0; i < nfiles; i++)
+        char script_name[512];
+        snprintf(script_name, sizeof(script_name),
+                 "./script_%s_%s.txt", phone->phone_name, phone->otp_imei);
+
+        if (csloader_parse_gdfs_script(port, fname, script_name) != 0)
         {
-            const char *fname = filenames[i];
-            printf("Try execute gdfs script: %s\n", fname);
-
-            char script_name[512];
-            snprintf(script_name, sizeof(script_name),
-                     "./script_%s_%s.txt", phone->phone_name, phone->otp_imei);
-
-            if (csloader_parse_gdfs_script(port, fname, script_name) != 0)
-            {
-                rc = -1;
-                break;
-            }
+            rc = -1;
+            break;
         }
+    }
 
-        if (rc == 0)
-        {
-            if (gdfs_terminate_access(port) != 0)
-                rc = -1;
-        }
+    if (rc == 0)
+    {
+        if (gdfs_terminate_access(port) != 0)
+            rc = -1;
     }
 
     return rc;

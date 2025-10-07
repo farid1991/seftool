@@ -58,6 +58,7 @@
 #define DB2000_FLLOADER_RED_CID49_R2B "./loader/db2000_cid49red_flash_r2b.bin"
 #define DB2000_FLLOADER_BRW_CID49_R2A "./loader/db2000_cid49brown_flash_r2a.bin"
 
+#define DB2010_FLLOADER_CID36_R2AB "./loader/db2010_cid36_flash_r2ab.bin"
 #define DB2010_FLLOADER_RED_CID36_R2AB "./loader/db2010_cid36red_flash_r2ab.bin"
 #define DB2010_FLLOADER_RED_CID49_R2A003 "./loader/db2010_cid49red_flash_r2a003.bin"
 #define DB2010_FLLOADER_RED_CID49_R2A007 "./loader/db2010_cid49red_flash_r2a007.bin"

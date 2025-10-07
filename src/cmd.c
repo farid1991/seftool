@@ -226,17 +226,21 @@ int cmd_decode_packet(const uint8_t *buf, int size, struct packetdata_t *out)
 		return cmd_decode_packet_noack(buf + 1, size - 1, out);
 	}
 	else if (buf[0] == 0 && buf[1] == SERIAL_HDR89) // CSLOADER
-    {
-        return cmd_decode_packet_noack(buf + 1, size - 1, out);
-    }
-    else if (buf[0] == 0x23 && buf[1] == SERIAL_HDR89) // CSLOADER V23 CHIPID:0x8000
-    {
-        return cmd_decode_packet_noack(buf + 1, size - 1, out);
-    }
-    else if (buf[0] == 0 && buf[1] == 0x23 && buf[2] == SERIAL_HDR89) // CSLOADER DB2000?
-    {
-        return cmd_decode_packet_noack(buf + 2, size - 2, out);
-    }
+	{
+		return cmd_decode_packet_noack(buf + 1, size - 1, out);
+	}
+	else if (buf[0] == 0x23 && buf[1] == SERIAL_HDR89) // CSLOADER V23 CHIPID:0x8000
+	{
+		return cmd_decode_packet_noack(buf + 1, size - 1, out);
+	}
+	else if (buf[0] == 0 && buf[1] == 0x23 && buf[2] == SERIAL_HDR89) // CSLOADER DB2000?
+	{
+		return cmd_decode_packet_noack(buf + 2, size - 2, out);
+	}
+	else if (buf[0] == SERIAL_ACK && buf[1] == SERIAL_ACK && buf[2] == SERIAL_HDR89) // patched cmd3E CID36 from den_po
+	{
+		return cmd_decode_packet_ack(buf + 1, size - 1, out);
+	}
 	else
 	{
 		fprintf(stderr, "Expected:89 XX XX XX XX || Got: %02X %02X\n", buf[0], buf[1]);

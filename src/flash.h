@@ -28,7 +28,7 @@ int flash_read(struct sp_port *port, struct phone_info *phone,
                uint32_t addr, size_t size);
 
 int flash_babe(struct sp_port *port, uint8_t *addr, size_t size, int flashfull);
-int flash_babe_fw(struct sp_port *port, const char *filename, int flashfull);
+int flash_babe_fw(struct sp_port *port, const char *filename, int fw_check);
 
 int flash_raw(struct sp_port *port, const char *filename, uint32_t raw_addr);
 uint8_t *flash_convert_raw_to_babe(uint8_t *raw, size_t size, uint32_t raw_addr, size_t *babe_size_out);

@@ -5,24 +5,83 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
 # Sources
-file(GLOB SRC_FILES ${CMAKE_SOURCE_DIR}/src/*.c)
-add_executable(seftool ${SRC_FILES})
+add_executable(seftool
+    src/action.c
+    src/babe.c
+    src/break.c
+    src/certz.c
+    src/common.c
+    src/cmd.c
+    src/connection.c
+    src/csloader.c
+    src/flash.c
+    src/gdfs.c
+    src/loader.c
+    src/main.c
+    src/scandir.c
+    src/serial.c
+    src/sha1.c
+    src/vkp.c
+    src/zipper.c
+)
 
-# --- Set static libs ---  (for future update)
-# set(ZLIB_USE_STATIC_LIBS TRUE)
+# --- Set static libs ---
+set(BUILD_SHARED_LIBS OFF)
+set(ENABLE_COMMONCRYPTO OFF)
+set(ZLIB_USE_STATIC_LIBS ON)
 
-# --- Dependencies ---
+# --- Helper to find static libraries explicitly ---
+function(find_static_library LIB_NAME OUT_VAR)
+    if (WIN32 OR MSVC)
+        set(CMAKE_FIND_LIBRARY_SUFFIXES ".lib" ".a")
+    else()
+        set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+    endif()
+
+    find_library(${OUT_VAR} NAMES ${LIB_NAME})
+
+    if (NOT ${OUT_VAR})
+        message(FATAL_ERROR "Static library '${LIB_NAME}' not found.")
+    else()
+        message(STATUS "Found static library: ${${OUT_VAR}}")
+    endif()
+endfunction()
+
+# --- Dependencies (prefer static) ---
 # libserialport
-find_library(SERIALPORT_LIB NAMES serialport libserialport REQUIRED)
+find_static_library(serialport SERIALPORT_LIB)
+
 if (WIN32)
-    target_link_libraries(seftool PRIVATE ${SERIALPORT_LIB} setupapi cfgmgr32 advapi32)
+    target_link_libraries(seftool PRIVATE
+        ${SERIALPORT_LIB}
+        setupapi
+        cfgmgr32
+        advapi32
+    )
 else()
     target_link_libraries(seftool PRIVATE ${SERIALPORT_LIB})
 endif()
 
-# zlib (for future update)
-# find_package(ZLIB REQUIRED)
-# target_link_libraries(seftool PRIVATE ZLIB::ZLIB)
+# --- Zlib ---
+find_static_library(z ZLIB_LIB)
+if (NOT ZLIB_LIB)
+    message(FATAL_ERROR "Zlib static library not found")
+endif()
+
+# --- BZip2 (optional, but required by Minizip on MSYS2) ---
+find_static_library(bz2 BZIP2_LIB)
+
+# --- Minizip ---
+find_static_library(minizip MINIZIP_LIB)
+if (NOT MINIZIP_LIB)
+    message(FATAL_ERROR "Minizip static library not found")
+endif()
+
+target_link_libraries(seftool PRIVATE
+    ${MINIZIP_LIB}
+    ${ZLIB_LIB}
+    ${BZIP2_LIB}
+)
 
 # --- Compiler / linker flags ---
 if (MSVC)
@@ -43,34 +102,17 @@ else()
     target_compile_options(seftool PRIVATE -Wall -Wextra -O2 -Wno-missing-braces)
 endif()
 
-if(WIN32)
-    add_custom_command(TARGET seftool POST_BUILD
-        # Copy source directories into the build tree
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/loader
-            ${CMAKE_BINARY_DIR}/loader
-
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/rest
-            ${CMAKE_BINARY_DIR}/rest
-
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/break49
-            ${CMAKE_BINARY_DIR}/break49
-    )
-else()
-    add_custom_command(TARGET seftool POST_BUILD
-        # Create symlinks from build tree to source directories
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${CMAKE_SOURCE_DIR}/loader
-            ${CMAKE_BINARY_DIR}/loader
-
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${CMAKE_SOURCE_DIR}/rest
-            ${CMAKE_BINARY_DIR}/rest
-
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${CMAKE_SOURCE_DIR}/break49
-            ${CMAKE_BINARY_DIR}/break49
-    )
-endif()
+set(RESOURCE_DIRS loader rest break49 anycid)
+foreach(DIR ${RESOURCE_DIRS})
+    if (WIN32)
+        add_custom_command(TARGET seftool POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_SOURCE_DIR}/${DIR}
+                ${CMAKE_BINARY_DIR}/${DIR})
+    else()
+        add_custom_command(TARGET seftool POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+                ${CMAKE_SOURCE_DIR}/${DIR}
+                ${CMAKE_BINARY_DIR}/${DIR})
+    endif()
+endforeach()

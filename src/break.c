@@ -3,6 +3,7 @@
 #include <ctype.h>
 #include <string.h>
 #include <stdint.h>
+#include <time.h>
 #include <libserialport.h>
 
 #include "babe.h"
@@ -27,7 +28,6 @@ int break_build_bootname(struct sp_port *port, struct phone_info *phone, struct 
     printf("\n");
 
     gdfs_get_phonename(port, phone, gdfs);
-    printf("Model: %s\n", gdfs->phone_name);
 
     // Copy phone_name but strip trailing 'i/a/c' if present
     char namebuf[5];
@@ -70,6 +70,10 @@ int break_build_bootname(struct sp_port *port, struct phone_info *phone, struct 
 
     // Map chip_id to hdrname
     snprintf(phone->hdrname, sizeof(phone->hdrname), "%scid49Red.hdr", get_chipset_name(phone->chip_id));
+
+    // Get REST name
+    gdfs_get_cxc_article(port, phone, gdfs);
+    parse_cxc_article_to_rest_name(phone, gdfs->cxc_article);
 
     return 0;
 }
@@ -262,6 +266,9 @@ int break_cid49(struct sp_port *port, struct phone_info *phone)
 
 int break_cid36(struct sp_port *port, struct phone_info *phone)
 {
+    if (phone->break_cid36 == 1) // already on break state
+        return 0;
+
     printf("Breaking rabbit hole...=) \n");
 
     if (phone->chip_id == DB2000)
@@ -285,6 +292,42 @@ int break_cid36(struct sp_port *port, struct phone_info *phone)
         fprintf(stderr, "ChipID %X is not supported", phone->chip_id);
         return -1;
     }
+
+    phone->break_cid36 = 1;
+
+    printf("Security disabled =)\n");
+
+    return 0;
+}
+
+int break_cid29(struct sp_port *port, struct phone_info *phone)
+{
+    if (phone->break_cid29 == 1) // already on break state
+        return 0;
+
+    printf("Breaking rabbit hole...=) \n");
+
+    if (phone->chip_id == DB2000)
+    {
+        if (loader_send_binary_cmd3e(port, phone->is_z1010 ? DB2000_VIOLA_BREAK : DB2000_BREAK) != 0)
+            return -1;
+        if (loader_send_unsigned_bin(port, phone->is_z1010 ? DB2000_VIOLA_PRODUCTION_R2Z : DB2000_PRODUCTION_R2Z, 0) != 0)
+            return -1;
+    }
+    else if (phone->chip_id == DB2010_1 || phone->chip_id == DB2010_2)
+    {
+        if (loader_send_binary_cmd3e(port, DB2010_BREAK) != 0)
+            return -1;
+        if (loader_send_unsigned_bin(port, DB2010_PRODUCTION_R2AB, 0x4C000000) != 0)
+            return -1;
+    }
+    else
+    {
+        fprintf(stderr, "ChipID %X is not supported", phone->chip_id);
+        return -1;
+    }
+
+    phone->break_cid29 = 1;
 
     printf("Security disabled =)\n");
 

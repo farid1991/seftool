@@ -3,6 +3,17 @@
 
 #include <stdint.h>
 
+#ifdef _WIN32
+#include <direct.h> // _mkdir
+#define MKDIR(path) _mkdir(path)
+#define PATHSEP '\\'
+#else
+#include <unistd.h>
+#define MKDIR(path) mkdir(path, 0755)
+#define RMDIR(path) rmdir(path)
+#define PATHSEP '/'
+#endif
+
 #define TIMEOUT 100 // ms
 
 #define SERIAL_ACK 0x06
@@ -18,8 +29,6 @@
 #define PNX5230 0xD000
 #define DB3150 0xC802
 
-extern int loader_type;
-
 struct phone_info
 {
     // base
@@ -28,7 +37,10 @@ struct phone_info
     uint8_t protocol_minor;
     uint8_t new_security;
     char phone_name[8];
-    char fw_version[64];
+    char cxc_article[64];
+    char cxc_version[64];
+    char rest_name[64];
+    char anycid_target[64];
     int is_z1010;
     int baudrate;
 
@@ -52,8 +64,11 @@ struct phone_info
     int skiperrors;
     int save_as_babe;
     int anycid;
+    int gdfs_server;
 
-    // break-rsa
+    // break state
+    int break_cid29;
+    int break_cid36;
     int break_rsa;
     char bootname[32];
     char osename[32];
@@ -85,8 +100,24 @@ const char *color_get_state(int color_code);
 const char *color_get_name(int color_code);
 uint32_t get_platform(uint16_t chip_id);
 
+int create_backup_dir(const char *path);
+int file_exists(const char *path);
+int check_anycid_pkg(struct phone_info *phone);
+int check_restore_file(struct phone_info *phone);
+int parse_cxc_article_to_rest_name(struct phone_info *phone, const char *cxc_article);
+int parse_cxc_article_to_anycid_pkg(struct phone_info *phone, const char *cxc_article);
 int scan_fw_version(uint8_t *buf, size_t size, char *fw_id, size_t fw_id_size);
 
 uint8_t *load_file(const char *path, size_t *size);
+int is_directory(const char *path);
+
+size_t ascii_to_ucs2(const char *src, uint8_t *dst);
+int ucs2_to_ascii(const uint8_t *buf, size_t buflen,
+                    size_t pos, char *out, size_t outlen,
+                    size_t *consumed);
+
+int ends_with(const char *str, const char *suffix);
+void normalize_path(char *path);
+int remove_recursive(const char *path);
 
 #endif // common_h
