@@ -235,7 +235,7 @@ int loader_activate_payload(struct sp_port *port, struct phone_info *phone)
 
         if (repl.data[1] != 0x00)
         {
-            fprintf(stderr, "failed activating GDFS\n");
+            fprintf(stderr, "failed\n");
             return -1;
         }
         printf("activated\n");
@@ -248,10 +248,13 @@ int loader_activate_payload(struct sp_port *port, struct phone_info *phone)
             return -1;
         }
         printf("unlocked\n");
-        printf("%s: ", phone->phone_name);
+        printf("%s ", phone->phone_name);
 
-        if (phone->chip_id == DB2000) // We dont need to use anycid for DB2000 =)
+        if (phone->chip_id == DB2000 || phone->chip_id == DB2010_1) // No cxc_article for DB2000 & DB2010(0x8000) =)
+        {
+            printf("\n\n");
             return 0;
+        }
 
         if (csloader_gdfs_get_cxc_article(port, phone) < 0)
             return -1;
@@ -885,7 +888,7 @@ int loader_send_csloader_db2020(struct sp_port *port, struct phone_info *phone)
 
 int loader_send_csloader_db2010(struct sp_port *port, struct phone_info *phone)
 {
-    if (phone->erom_cid == 29)
+    if (phone->erom_cid <= 29)
     {
         if (loader_send_qhldr(port, phone, DB2010_CERTLOADER_RED_CID01_R2E) != 0)
             return -1;
@@ -901,9 +904,9 @@ int loader_send_csloader_db2010(struct sp_port *port, struct phone_info *phone)
             return -1;
         if (break_cid36(port, phone) != 0)
             return -1;
-        if (loader_send_binary(port, phone, DB2010_CSLOADER_HAK_CID00_V23) != 0)
-            return -1;
-        return 0;
+        if (phone->chip_id == DB2010_1)
+            return loader_send_binary(port, phone, DB2010_CSLOADER_R2C_DEN_PO);
+        return loader_send_binary(port, phone, DB2010_CSLOADER_HAK_CID00_V23);
     }
 
     if (phone->erom_color == BROWN)
@@ -1042,6 +1045,8 @@ int loader_send_oflash_ldr_db2000(struct sp_port *port, struct phone_info *phone
             return -1;
         if (break_cid29(port, phone) != 0)
             return -1;
+        if (loader_send_binary(port, phone, DB2000_FLLOADER_R2B_DEN_PO) != 0)
+            return -1;
         return 0;
     }
     // CID36 (both RED and BROWN)
@@ -1074,11 +1079,13 @@ int loader_send_oflash_ldr_db2000(struct sp_port *port, struct phone_info *phone
 int loader_send_oflash_ldr_db2010(struct sp_port *port, struct phone_info *phone)
 {
     // K500/K700
-    if (phone->erom_cid == 29)
+    if (phone->erom_cid <= 29)
     {
         if (loader_send_qhldr(port, phone, DB2010_CERTLOADER_RED_CID01_R2E) != 0)
             return -1;
         if (break_cid29(port, phone) != 0)
+            return -1;
+        if (loader_send_binary(port, phone, DB2010_FLLOADER_P5G_DEN_PO) != 0)
             return -1;
         return 0;
     }
@@ -1284,7 +1291,7 @@ int loader_send_bflash_ldr_db2000(struct sp_port *port, struct phone_info *phone
 int loader_send_bflash_ldr_db2010(struct sp_port *port, struct phone_info *phone)
 {
     // TODO CID16
-    if (phone->erom_cid == 29)
+    if (phone->erom_cid <= 29)
     {
         if (loader_send_qhldr(port, phone, DB2010_CERTLOADER_RED_CID01_R2E) != 0)
             return -1;
