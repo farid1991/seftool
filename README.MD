@@ -110,7 +110,8 @@ Options:
                           write-gdfs <filename>
                           write-script <file1> [file2 ...]
                           unlock <usercode|simlock>
-                          upload-fs src <local path/file/zip> [dest <fs path>]
+                          fsx-upload src <local path/file/zip> [dest <fs path>]
+                          fsx-download src <fs path>/<file> [dest <local path>]
                           upload-anycid
                           convert babe2raw <filename>
                           convert raw2babe <filename> <addr>
@@ -125,18 +126,20 @@ Global options:
 
 ## Supported devices
 
-| Action             | DB2000           | DB201x                | DB2020         | PNX5230 |
-|:-------------------|:-----------:|:---------------------:|:--------------:|:-------:|
-| identify           | OK          | OK                    | OK             | OK      |
-| flash              | OK          | OK                    | OK             | OK      |
-| read-flash         | CID29,36,49 | CID29,36,49 + ANYCID  | BROWN49+ANYCID | ANYCID  |
-| read-gdfs          | OK          | OK                    | OK             | OK      |
-| write-gdfs         | OK          | OK                    | OK             | OK      |
-| write-script[gdfs] | OK          | OK                    | OK             | OK      |
-| write-script[vkp]  | CID29,36,49 | CID29,36,49 + ANYCID  | BROWN49+ANYCID | ANYCID  |
-| unlock-usercode    | OK          | OK                    | OK             | OK      |
-| unlock-simlock     | TODO        | TODO                  | TODO           | TODO    |
-| upload-fs          | OK          | OK                    | OK             | OK      |
+| Action             | DB2000        | DB201x                | DB2020         | PNX5230 |
+|:-------------------|:-------------:|:---------------------:|:--------------:|:-------:|
+| identify           | OK            | OK                    | OK             | OK      |
+| flash              | OK            | OK                    | OK             | OK      |
+| read-flash         | CID29,36,49   | CID29,36,49 + ANYCID  | BROWN49+ANYCID | ANYCID  |
+| read-gdfs          | OK            | OK                    | OK             | OK      |
+| write-gdfs         | OK            | OK                    | OK             | OK      |
+| write-script[gdfs] | OK~~CID29~~   | OK                    | OK             | OK      |
+| write-script[vkp]  | CID36,49      | CID29,36,49 + ANYCID  | BROWN49+ANYCID | ANYCID  |
+| unlock-usercode    | OK            | OK                    | OK             | OK      |
+| unlock-simlock     | TODO          | TODO                  | TODO           | TODO    |
+| upload-anycid      | NOTHING       | OK                    | OK             | OK      |
+| fsx-upload         | OK            | OK                    | OK             | OK      |
+| fsx-download       | OK~~CID29~~   | CID29,36,49 + ANYCID  | BROWN49+ANYCID | ANYCID  |
 
 
 ---
@@ -250,7 +253,7 @@ $ .\seftool.exe -p COM2 -b 921600 -a read-gdfs
 
 ### Restore GDFS from file (write-gdfs):
 ```sh
-$ .\seftool.exe -p COM2 -b 921600 -a write-gdfs backup/gdfs.bin
+$ .\seftool.exe -p COM2 -b 921600 -a write-gdfs ./backup/gdfs.bin
 ```
 
 ### Write GDFS script (write-script):
@@ -277,7 +280,7 @@ $ .\seftool.exe -p COM2 -b 921600 -a disable_setup_wizard.vkp no_simcard.vkp --a
 .\seftool.exe -p COM2 -b 921600 -a unlock usercode
 ```
 
-### Upload filesystem (upload-fs)
+### Upload filesystem (fsx-upload)
 
 #### Upload a local directory or a zip archive to the phone filesystem.
 
@@ -288,27 +291,39 @@ $ .\seftool.exe -p COM2 -b 921600 -a disable_setup_wizard.vkp no_simcard.vkp --a
 ##### Upload a local directory into a specific phone directory:
 ```sh
 # Upload local directory "./Z530" into /tpa/preset/system/language on the phone
-.\seftool.exe -p COM2 -b 921600 -a upload-fs src ./Z530 dest /tpa/preset/system/language
+.\seftool.exe -p COM2 -b 921600 -a fsx-upload src ./Z530 dest /tpa/preset/system/language
 ```
 ##### Upload a local file(s) into a specific phone directory:
 ```sh
 # Upload local file "./file1.txt" "../file2.txt" into /tpa/user/other on the phone
-.\seftool.exe -p COM2 -b 921600 -a upload-fs src ./file1.txt ../file2.txt dest /tpa/user/other
+.\seftool.exe -p COM2 -b 921600 -a fsx-upload src ./file1.txt ../file2.txt dest /tpa/user/other
 ```
 ##### Upload a ZIP archive and extract its contents on the fly (dest defaults to root):
 ```sh
 # Extract ZIP to ./tmp then upload files preserving internal paths (default dest is root '/')
-.\seftool.exe -p COM2 -b 921600 -a upload-fs src ./Z530i_CDA102462_75_R1A_Generic_Trade_Indonesia.zip
+.\seftool.exe -p COM2 -b 921600 -a fsx-upload src ./Z530i_CDA102462_75_R1A_Generic_Trade_Indonesia.zip
 ```
 ##### Upload from local directory but place all files directly under the given destination:
 ```sh
 # Put the contents of ./lang directly into /tpa/preset/system/language
-./seftool -p /dev/ttyUSB0 -b 921600 -a upload-fs src ./lang dest /tpa/preset/system/language
+./seftool -p /dev/ttyUSB0 -b 921600 -a fsx-upload src ./lang dest /tpa/preset/system/language
 ```
 
 ### Upload anycid bypass package (upload-anycid) : auto detection, do identify first
 ```sh
 ./seftool -p /dev/ttyUSB0 -b 921600 -a upload-anycid
+```
+
+### Download filesystem (fsx-download)
+
+##### Download an internal FS directory into a specific local directory:
+```sh
+.\seftool.exe -p COM2 -b 921600 -a fsx-download src /tpa/preset/system/language' dest ./lng
+```
+
+##### Download an internal FS file(s) into a specific local directory:
+```sh
+.\seftool.exe -p COM2 -b 921600 -a fsx-download src /tpa/preset/system/settings/splash' dest ./startup
 ```
 
 ### Convert firmware(BABE format) to RAW binary:
@@ -349,8 +364,8 @@ Using `seftool` may permanently damage your device if used incorrectly.
 2. Complete operation for phone with CID16 and ~~CID29~~ (DB2000 & DB2010)
 3. ~~VKP patching~~
 4. ~~Break RSA RED49 DB2000 & DB2010~~
-5. ~~Patch DB2000 & CID29~~
-6. Read file(s) / directory from FS
+5. Patch DB2000 CID29
+6. ~~Read file(s) / directory from FS~~
 7. Implement *mkrest* action
 8. SIM unlock by patch
 9. ...

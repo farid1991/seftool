@@ -29,6 +29,12 @@
 #define PNX5230 0xD000
 #define DB3150 0xC802
 
+enum connect_mode_e
+{
+    SERIAL_CONNECTION,
+    USB_CONNECTION
+};
+
 struct phone_info
 {
     // base
@@ -43,6 +49,7 @@ struct phone_info
     char anycid_target[64];
     int is_z1010;
     int baudrate;
+    int connect_mode;
 
     // EROM
     int erom_color;
@@ -61,7 +68,6 @@ struct phone_info
 
     // state
     int qhldr_sent;
-    int skiperrors;
     int save_as_babe;
     int anycid;
     int gdfs_server;
@@ -74,14 +80,6 @@ struct phone_info
     char osename[32];
     char hdrname[32];
 };
-
-// enum color_e
-// {
-//     BLUE,
-//     BROWN,
-//     RED,
-//     BLACK
-// };
 
 // ---------- byte helper ----------
 uint8_t get_byte(uint8_t *p);

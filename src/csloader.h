@@ -13,7 +13,6 @@ int csloader_gdfs_get_phonename(struct sp_port *port, struct phone_info *phone);
 int csloader_gdfs_get_cxc_article(struct sp_port *port, struct phone_info *phone);
 
 // FSX Server
-#define CMD_FSX_START 0x12
 
 typedef struct ose_stat_t
 {
@@ -26,6 +25,12 @@ typedef struct ose_stat_t
     uint32_t st_mtime; /* time of last modification */
     uint32_t st_ctime; /* time of last status change */
 } ose_stat_t;
+
+typedef struct
+{
+    char name[256]; // e.g. "customize.xml"
+    int d_type;     // 1 = dir, 0 = file
+} cs_entry_t;
 
 #define OSEATTR_EXECUTABLE 0x0001
 #define OSEATTR_WRITEABLE 0x0002
@@ -47,17 +52,24 @@ typedef struct ose_stat_t
 int csloader_start_fsx_server(struct sp_port *port);
 int csloader_get_working_directory(struct sp_port *port, char *cwd, size_t cwd_len);
 int csloader_change_directory(struct sp_port *port, const char *dirname);
-int csloader_list(struct sp_port *port);
+int csloader_stat(struct sp_port *port, const char *filename, ose_stat_t *st);
+int csloader_list(struct sp_port *port, cs_entry_t **out_list, size_t *out_count);
 int csloader_make_directory(struct sp_port *port, const char *dirname);
-// int csloader_upload_directory(struct sp_port *port, const char *dirname, const char *subdirname);
 int csloader_upload_zip(struct sp_port *port, const char *zip_filename);
-int csloader_copy_file(struct sp_port *port, const char *name,
-                       size_t filesize, const uint8_t *filebuffer);
+int csloader_put_file(struct sp_port *port, const char *name,
+                      size_t filesize, const uint8_t *filebuffer);
+int csloader_get_file(struct sp_port *port, const char *local_path, const char *fname);
 int csloader_delete_file(struct sp_port *port, const char *filename);
-int csloader_upload_directory(struct sp_port *port,
-                              const char *src_dir,    // local base dir, e.g. "./tmp"
-                              const char *subdirname, // relative subdir (used internally)
-                              const char *dest_dir);   // base on phone ("" = derive)
+int csloader_delete_directory(struct sp_port *port, const char *dirname);
+
+int csloader_write_directory(struct sp_port *port,
+                             const char *src_dir,    // local base dir, e.g. "./tmp"
+                             const char *subdirname, // relative subdir (used internally)
+                             const char *dest_dir);  // base on phone ("" = derive)
+int csloader_read_directory(struct sp_port *port,
+                            const char *src_dir,   // internal FS path, e.g. "/tpa/preset/custom"
+                            const char *dest_dir); // local path, e.g. "./dump"
+
 int csloader_shutdown_fsx_server(struct sp_port *port);
 
 #endif // csloader_h

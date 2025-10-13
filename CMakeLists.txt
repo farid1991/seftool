@@ -17,6 +17,8 @@ add_executable(seftool
     src/flash.c
     src/gdfs.c
     src/loader.c
+    src/oflash.c
+    src/bflash.c
     src/main.c
     src/scandir.c
     src/serial.c
@@ -82,6 +84,14 @@ target_link_libraries(seftool PRIVATE
     ${ZLIB_LIB}
     ${BZIP2_LIB}
 )
+
+# --- libusb & libftdi
+# find_package(PkgConfig REQUIRED)
+# pkg_check_modules(libusb REQUIRED IMPORTED_TARGET libusb-1.0)
+# target_link_libraries(seftool PRIVATE PkgConfig::libusb)
+# pkg_check_modules(libftdi1 REQUIRED IMPORTED_TARGET libftdi1)
+# find_package(libftdi1 REQUIRED)
+# target_link_libraries(seftool PRIVATE PkgConfig::libftdi1)
 
 # --- Compiler / linker flags ---
 if (MSVC)

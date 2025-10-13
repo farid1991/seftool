@@ -29,7 +29,8 @@ static void print_usage(const char *progname)
     printf("                          write-gdfs <filename>\n");
     printf("                          write-script <file1> [file2 ...]\n");
     printf("                          unlock <usercode|simlock>\n");
-    printf("                          upload-fs src <local path/file/zip> [dest <fs path>]\n");
+    printf("                          fsx-upload src <local path/file/zip> [dest <fs path>]\n");
+    printf("                          fsx-download src <fs path>/<file> [dest <local path>]\n");
     printf("                          upload-anycid\n");
     printf("                          convert babe2raw <filename>\n");
     printf("                          convert raw2babe <filename> <addr>\n");
@@ -52,6 +53,7 @@ int main(int argc, char **argv)
     const char *cnv_filename = NULL;
     const char *cnv_mode = NULL;
     const char *dest_path = NULL;
+    const char *src_path = NULL;
     const char **src_list = NULL;
     int src_count = 0;
     const char **script_filenames = NULL;
@@ -219,7 +221,7 @@ int main(int argc, char **argv)
                 script_count = count;
                 i = start + count - 1; // move index
             }
-            else if (strcmp(action, "upload-fs") == 0)
+            else if (strcmp(action, "fsx-upload") == 0)
             {
                 while (i + 1 < argc && argv[i + 1][0] != '-')
                 {
@@ -237,7 +239,7 @@ int main(int argc, char **argv)
 
                         if (count == 0)
                         {
-                            fprintf(stderr, "Error: upload-fs requires src <one or more files>\n");
+                            fprintf(stderr, "Error: fsx-upload requires src <one or more files>\n");
                             return 1;
                         }
 
@@ -251,16 +253,46 @@ int main(int argc, char **argv)
                     }
                     else
                     {
-                        fprintf(stderr, "Error: Unknown or incomplete upload-fs argument '%s'\n", arg);
+                        fprintf(stderr, "Error: Unknown or incomplete fsx-upload argument '%s'\n", arg);
                         return 1;
                     }
                 }
 
                 if (src_count == 0)
                 {
-                    fprintf(stderr, "Error: upload-fs requires src <local path(s)>\n");
+                    fprintf(stderr, "Error: fsx-upload requires src <local path(s)>\n");
                     return 1;
                 }
+            }
+            else if (strcmp(action, "fsx-download") == 0)
+            {
+                while (i + 1 < argc && argv[i + 1][0] != '-')
+                {
+                    const char *arg = argv[++i];
+
+                    if (strcmp(arg, "src") == 0 && i + 1 < argc)
+                    {
+                        src_path = argv[++i]; // internal FS path (eg: /tpa/preset/custom)
+                    }
+                    else if (strcmp(arg, "dest") == 0 && i + 1 < argc)
+                    {
+                        dest_path = argv[++i]; // local dir (eg: ./temp)
+                    }
+                    else
+                    {
+                        fprintf(stderr, "Error: Unknown or incomplete fsx-download argument '%s'\n", arg);
+                        return 1;
+                    }
+                }
+
+                if (!src_path)
+                {
+                    fprintf(stderr, "Error: fsx-download requires src <internal path>\n");
+                    return 1;
+                }
+
+                if (!dest_path)
+                    dest_path = "./temp"; // default
             }
             else if (strcmp(action, "convert") == 0)
             {
@@ -420,6 +452,10 @@ int main(int argc, char **argv)
         else
             printf("Destination: ROOT\n");
         break;
+    case ACT_DOWNLOAD_FS:
+        printf("\nSource: %s\n", src_path);
+        printf("Destination: %s\n", dest_path);
+        break;
     default:
         printf("\n");
         break;
@@ -499,6 +535,14 @@ int main(int argc, char **argv)
 
     case ACT_UPLOAD_FS:
         if (action_upload_to_fs(port, &phone, src_list, src_count, dest_path ? dest_path : "/") != 0)
+            goto exit_error;
+        break;
+
+    case ACT_DOWNLOAD_FS:
+        phone.gdfs_server = 1;
+        phone.anycid = anycid;
+        phone.break_rsa = break_rsa;
+        if (action_download_from_fs(port, &phone, src_path, dest_path) != 0)
             goto exit_error;
         break;
 

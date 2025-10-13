@@ -44,8 +44,10 @@ action_t action_from_string(const char *a)
         return ACT_UNLOCK;
     if (strcmp(a, "convert") == 0)
         return ACT_CONVERT;
-    if (strcmp(a, "upload-fs") == 0)
+    if (strcmp(a, "fsx-upload") == 0)
         return ACT_UPLOAD_FS;
+    if (strcmp(a, "fsx-download") == 0)
+        return ACT_DOWNLOAD_FS;
     if (strcmp(a, "upload-anycid") == 0)
         return ACT_UPLOAD_ANYCID;
     return ACT_NONE;
@@ -53,7 +55,7 @@ action_t action_from_string(const char *a)
 
 int unlock_usercode_db2020_pnx5230(struct sp_port *port, struct phone_info *phone)
 {
-    if (loader_send_csloader(port, phone) != 0)
+    if (loader_send_ofs_ldr(port, phone) != 0)
         return -1;
 
     if (gdfs_unlock_usercode(port) != 0)
@@ -335,7 +337,7 @@ int action_upload_anycid(struct sp_port *port, struct phone_info *phone)
 {
     if (phone->chip_id == DB2000)
     {
-        printf("No need to use anycid exploit for DB2000 phone\n");
+        printf("No anycid exploit for DB2000 phone\n");
         return 0;
     }
     if (phone->erom_color == BROWN)
@@ -352,7 +354,7 @@ int action_upload_anycid(struct sp_port *port, struct phone_info *phone)
 
     phone->gdfs_server = 1;
 
-    if (loader_send_csloader(port, phone) != 0)
+    if (loader_send_ofs_ldr(port, phone) != 0)
         return -1;
     if (csloader_start_fsx_server(port) != 0)
         return -1;
@@ -362,18 +364,21 @@ int action_upload_anycid(struct sp_port *port, struct phone_info *phone)
     char anycid_pkg[256];
     snprintf(anycid_pkg, sizeof(anycid_pkg), "./anycid/%s.zip", phone->anycid_target);
 
-    char platform_pkg[256];
-    snprintf(platform_pkg, sizeof(platform_pkg), "./anycid/%s.zip", get_chipset_name(phone->chip_id));
-
     if (file_exists(anycid_pkg))
     {
-        printf("-> Uploading package: %s,%s\n", platform_pkg, anycid_pkg);
+        printf("-> Uploading package: %s\n", anycid_pkg);
 
-        if (csloader_upload_zip(port, platform_pkg) != 0)
+        char platform_pkg[256];
+        if (phone->chip_id == DB2020 || phone->chip_id == PNX5230)
         {
-            fprintf(stderr, "Error uploading pkg: %s\n", platform_pkg);
-            csloader_shutdown_fsx_server(port);
-            return -1;
+            snprintf(platform_pkg, sizeof(platform_pkg), "./anycid/%s.zip", get_chipset_name(phone->chip_id));
+
+            if (csloader_upload_zip(port, platform_pkg) != 0)
+            {
+                fprintf(stderr, "Error uploading pkg: %s\n", platform_pkg);
+                csloader_shutdown_fsx_server(port);
+                return -1;
+            }
         }
 
         if (csloader_upload_zip(port, anycid_pkg) != 0)
@@ -384,7 +389,7 @@ int action_upload_anycid(struct sp_port *port, struct phone_info *phone)
         }
 
         printf("Turn on the phone with simcard installed\n"
-               "executer installed on Games folder\n\n");
+               "executer will be installed on Games folder\n\n");
     }
 
     if (csloader_shutdown_fsx_server(port) != 0)
@@ -398,7 +403,7 @@ int action_upload_to_fs(struct sp_port *port, struct phone_info *phone,
 {
     phone->gdfs_server = 1;
 
-    if (loader_send_csloader(port, phone) != 0)
+    if (loader_send_ofs_ldr(port, phone) != 0)
         return -1;
     if (csloader_start_fsx_server(port) != 0)
         return -1;
@@ -415,12 +420,12 @@ int action_upload_to_fs(struct sp_port *port, struct phone_info *phone,
             continue;
         }
 
-        printf("\n=== %s (%d/%d) ===\n", src_name, i + 1, src_count);
+        printf("=== %s (%d/%d) ===\n", src_name, i + 1, src_count);
 
         if (is_directory(src_name))
         {
             printf("-> Uploading directory:\n");
-            if (csloader_upload_directory(port, src_name, "", dst_dir) != 0)
+            if (csloader_write_directory(port, src_name, "", dst_dir) != 0)
             {
                 fprintf(stderr, "Error uploading directory: %s\n", src_name);
                 csloader_shutdown_fsx_server(port);
@@ -458,15 +463,10 @@ int action_upload_to_fs(struct sp_port *port, struct phone_info *phone,
             }
 
             if (filesize == 0)
-            {
-                printf("-> Delete:\n  Phone: %s (filesize is zero)\n", target_path);
                 csloader_delete_file(port, target_path);
-            }
             else
             {
-                printf("-> Uploading:\n  Phone: %s\n  Size : %zu bytes\n\n",
-                       target_path, filesize);
-                if (csloader_copy_file(port, target_path, filesize, filebuff) != 0)
+                if (csloader_put_file(port, target_path, filesize, filebuff) != 0)
                 {
                     fprintf(stderr, "Error copying file: %s\n", src_name);
                     free(filebuff);
@@ -484,6 +484,75 @@ int action_upload_to_fs(struct sp_port *port, struct phone_info *phone,
 
     printf("\nAll uploads complete.\n");
     return 0;
+}
+
+int action_download_from_fs(struct sp_port *port, struct phone_info *phone,
+                            const char *src_path,
+                            const char *dest_dir)
+{
+    phone->gdfs_server = 1;
+
+    ose_stat_t st;
+
+    if (loader_send_bfs_ldr(port, phone) != 0)
+        return -1;
+    if (csloader_start_fsx_server(port) != 0)
+        return -1;
+    if (csloader_change_directory(port, "/") != 0)
+        return -1;
+
+    int result = -1;
+
+    // --- Special case: root path is always a directory ---
+    if (strcmp(src_path, "/") == 0)
+    {
+        printf("Source is root directory\n");
+        result = csloader_read_directory(port, "/", dest_dir);
+        goto done;
+    }
+
+    // --- Query file info ---
+    if (csloader_stat(port, src_path, &st) != 0)
+    {
+        printf("Error: cannot stat '%s'\n", src_path);
+        goto done;
+    }
+
+    // --- Directory or file ---
+    if (st.st_mode & OSEATTR_DIRECTORY)
+    {
+        printf("'%s' is a directory\n", src_path);
+        result = csloader_read_directory(port, src_path, dest_dir);
+    }
+    else
+    {
+        printf("'%s' is a file\n", src_path);
+        const char *fname = strrchr(src_path, '/');
+        if (!fname)
+            fname = src_path;
+        else
+            fname++;
+
+        char dest_path[512];
+        snprintf(dest_path, sizeof(dest_path), "%s/%s", dest_dir, fname);
+
+        result = csloader_get_file(port, dest_path, src_path);
+    }
+
+done:
+    csloader_shutdown_fsx_server(port);
+
+    if (result == 0)
+        printf("\nDownload complete: %s\n", src_path ? src_path : "/");
+    else
+        printf("\nDownload failed: %s\n", src_path ? src_path : "/");
+
+    if (phone->chip_id == DB2000 && phone->break_rsa)
+    {
+        result = bflash_repair_boot(port, phone);
+    }
+
+    return result;
 }
 
 int action_flash_fw(struct sp_port *port, struct phone_info *phone,
@@ -546,7 +615,7 @@ int action_flash_fw(struct sp_port *port, struct phone_info *phone,
         printf("\n");
 
         // Restart device before upload CDA package
-        if (fw_flashed)
+        if (fw_flashed && (phone->chip_id != DB2020 || phone->chip_id != PNX5230))
         {
             if (loader_shutdown(port) != 0)
                 return -1;
@@ -579,12 +648,6 @@ int action_read_flash(struct sp_port *port, struct phone_info *phone, uint32_t a
     if (loader_send_bflash_ldr(port, phone) != 0)
         return -1;
 
-    if (phone->anycid == 1 || phone->break_rsa == 1)
-    {
-        if (flash_restore_boot_area(port, phone) != 0)
-            return -1;
-    }
-
     if (flash_read(port, phone, addr, size) != 0)
         return -1;
 
@@ -593,7 +656,7 @@ int action_read_flash(struct sp_port *port, struct phone_info *phone, uint32_t a
 
 int action_restore_gdfs(struct sp_port *port, struct phone_info *phone, const char *inputfname)
 {
-    if (loader_send_csloader(port, phone) != 0)
+    if (loader_send_ofs_ldr(port, phone) != 0)
         return -1;
 
     if (csloader_write_gdfs(port, inputfname) != 0)
@@ -607,7 +670,7 @@ int action_restore_gdfs(struct sp_port *port, struct phone_info *phone, const ch
 
 int action_backup_gdfs(struct sp_port *port, struct phone_info *phone)
 {
-    if (loader_send_csloader(port, phone) != 0)
+    if (loader_send_ofs_ldr(port, phone) != 0)
         return -1;
 
     if (csloader_read_gdfs(port, phone) != 0)
@@ -647,12 +710,6 @@ int action_exec_scripts(struct sp_port *port, struct phone_info *phone,
         // --- Prepare bflash loader once ---
         if (loader_send_bflash_ldr(port, phone) != 0)
             return -1;
-
-        if (phone->anycid == 1 || phone->break_rsa == 1)
-        {
-            if (flash_restore_boot_area(port, phone) != 0)
-                return -1;
-        }
 
         int patched_count = 0;
         int skipped_count = 0;
@@ -699,7 +756,7 @@ int action_exec_scripts(struct sp_port *port, struct phone_info *phone,
     }
 
     // --- CSLOADER once ---
-    if (loader_send_csloader(port, phone) != 0)
+    if (loader_send_ofs_ldr(port, phone) != 0)
         return -1;
 
     for (int i = 0; i < nfiles; i++)

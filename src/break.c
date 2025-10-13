@@ -307,18 +307,9 @@ int break_cid29(struct sp_port *port, struct phone_info *phone)
 
     printf("Breaking rabbit hole...=) \n");
 
-    if (phone->chip_id == DB2000)
+    if (phone->chip_id == DB2010_1 || phone->chip_id == DB2010_2)
     {
-        if (loader_send_binary_cmd3e(port, phone->is_z1010 ? DB2000_VIOLA_BREAK : DB2000_BREAK) != 0)
-            return -1;
-        if (loader_send_unsigned_bin(port, phone->is_z1010 ? DB2000_VIOLA_PRODUCTION_R2Z : DB2000_PRODUCTION_R2Z, 0) != 0)
-            return -1;
-    }
-    else if (phone->chip_id == DB2010_1 || phone->chip_id == DB2010_2)
-    {
-        if (loader_send_binary_cmd3e(port, DB2010_BREAK) != 0)
-            return -1;
-        if (loader_send_unsigned_bin(port, DB2010_PRODUCTION_R2AB, 0x4C000000) != 0)
+        if (loader_send_binary_cmd3e(port, DB2010_BREAK_R2E_HENDRIX) != 0)
             return -1;
     }
     else

@@ -129,6 +129,30 @@ int send_question_mark(struct sp_port *port, struct phone_info *phone)
     return 0;
 }
 
+int get_connection_type(struct sp_port *port, struct phone_info *phone)
+{
+    if (phone->chip_id == PNX5230)
+        return 0;
+
+    uint8_t cmd = 'K';
+
+    if (serial_write(port, &cmd, 1) < 0)
+        return -1;
+
+    uint8_t resp[8];
+    if (serial_read(port, resp, sizeof(resp), TIMEOUT) <= 0)
+        return -1;
+
+    if (resp[0] == 0x4E)
+        phone->connect_mode = SERIAL_CONNECTION;
+    else
+        phone->connect_mode = USB_CONNECTION;
+
+    printf("CONNECTION: %s\n", phone->connect_mode ? "USB" : "SERIAL");
+
+    return 0;
+}
+
 int erom_get_info(struct sp_port *port, struct phone_info *phone)
 {
     if (phone->chip_id == DB2020 || phone->chip_id == 0x5B07 || phone->chip_id == 0x5B08)
@@ -221,6 +245,8 @@ int connection_open(struct sp_port *port, struct phone_info *phone)
     if (wait_for_Z(port) != 0)
         return -1;
     if (send_question_mark(port, phone) != 0)
+        return -1;
+    if (get_connection_type(port, phone) != 0)
         return -1;
     if (erom_get_info(port, phone) != 0)
         return -1;

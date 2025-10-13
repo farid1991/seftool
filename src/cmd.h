@@ -32,6 +32,7 @@
 #define CMD_FSX_PUTFILE         0x0C
 #define CMD_FSX_GETFILE         0x0D
 #define CMD_FSX_GETDIR          0x10
+#define CMD_FSX_START           0x12
 
 struct packetdata_t
 {
@@ -39,7 +40,7 @@ struct packetdata_t
     uint8_t hdr;
     uint8_t cmd;
     uint16_t length;
-    uint8_t data[1024];
+    uint8_t data[0x1001];
     uint8_t checksum;
 };
 

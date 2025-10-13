@@ -492,7 +492,7 @@ int csloader_start_fsx_server(struct sp_port *port)
         return -1;
 
     uint8_t resp[8];
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 500 * TIMEOUT);
+    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 1000 * TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -515,8 +515,7 @@ int csloader_get_working_directory(struct sp_port *port, char *cwd, size_t max_l
     if (!cwd || max_len == 0)
         return -1;
 
-    uint8_t cmd_buf[0x100];
-    uint8_t resp[0x200];
+    uint8_t cmd_buf[16];
     struct packetdata_t repl = {0};
 
     // build GETDIR command
@@ -528,7 +527,11 @@ int csloader_get_working_directory(struct sp_port *port, char *cwd, size_t max_l
     if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
         return -1;
 
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 3 * TIMEOUT);
+    if (serial_wait_ack(port, 10 * TIMEOUT) != 0)
+        return -1;
+
+    uint8_t resp[256];
+    int rcv_len = serial_read(port, resp, sizeof(resp), 3 * TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -568,9 +571,12 @@ int csloader_change_directory(struct sp_port *port, const char *dirname)
     if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
         return -1;
 
-    uint8_t resp[64];
+    if (serial_wait_ack(port, 10 * TIMEOUT) != 0)
+        return -1;
+
+    uint8_t resp[32];
     struct packetdata_t repl = {0};
-    int rcv_len = serial_read(port, resp, sizeof(resp), TIMEOUT);
+    int rcv_len = serial_read(port, resp, sizeof(resp), 3 * TIMEOUT);
     if (rcv_len <= 0)
         return -1;
     if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
@@ -590,7 +596,6 @@ int csloader_stat(struct sp_port *port, const char *filename, ose_stat_t *st)
         return -1;
 
     uint8_t cmd_buf[0x100];
-    uint8_t resp[0x100];
     struct packetdata_t repl;
 
     uint8_t data[0x256];
@@ -605,7 +610,11 @@ int csloader_stat(struct sp_port *port, const char *filename, ose_stat_t *st)
     if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
         return -1;
 
-    int rcv_len = serial_read(port, resp, sizeof(resp), TIMEOUT);
+    if (serial_wait_ack(port, 10 * TIMEOUT) != 0)
+        return -1;
+
+    uint8_t resp[0x20];
+    int rcv_len = serial_read(port, resp, sizeof(resp), 3 * TIMEOUT);
     if (rcv_len <= 0)
         return -1;
     if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
@@ -616,34 +625,83 @@ int csloader_stat(struct sp_port *port, const char *filename, ose_stat_t *st)
     // --- Copy into ose_stat_t ---
     memcpy(st, &repl.data[2], sizeof(ose_stat_t));
 
+    uint16_t attr = st->st_mode; // swap
+    st->st_mode = 0;
+
+    // --- Base permissions ---
+    if (attr & 0x0001)
+        st->st_mode |= OSEATTR_EXECUTABLE;
+    if (attr & 0x0002)
+        st->st_mode |= OSEATTR_WRITEABLE;
+    if (attr & 0x0004)
+        st->st_mode |= OSEATTR_READABLE;
+
+    // --- Owner / group bits if they exist ---
+    if (attr & 0x0010)
+        st->st_mode |= OSEATTR_OWNER_WRITEABLE;
+    if (attr & 0x0020)
+        st->st_mode |= OSEATTR_OWNER_READABLE;
+
+    // --- Directory flag ---
+    if (attr & 0x4000)
+        st->st_mode |= OSEATTR_DIRECTORY;
+
     return 0;
 }
 
-int csloader_list(struct sp_port *port)
-{
-    // printf("ls\n");
+// --- Helper macro ---
+#define ADD_ENTRY(src_name, d_type_flag)                                    \
+    do                                                                      \
+    {                                                                       \
+        if (count >= capacity)                                              \
+        {                                                                   \
+            capacity = capacity ? capacity * 2 : 16;                        \
+            cs_entry_t *tmp = realloc(list, capacity * sizeof(cs_entry_t)); \
+            if (!tmp)                                                       \
+            {                                                               \
+                free(list);                                                 \
+                return -1;                                                  \
+            }                                                               \
+            list = tmp;                                                     \
+        }                                                                   \
+        strncpy(list[count].name, src_name, sizeof(list[count].name) - 1);  \
+        list[count].name[sizeof(list[count].name) - 1] = '\0';              \
+        list[count].d_type = d_type_flag;                                   \
+        count++;                                                            \
+    } while (0)
 
-    uint8_t cmd_buf[0x100];
+int csloader_list(struct sp_port *port, cs_entry_t **out_list, size_t *out_count)
+{
+    if (!out_list || !out_count)
+        return -1;
+
     uint8_t resp[0x1000];
     struct packetdata_t repl;
     size_t pos;
-    ose_stat_t st;
+
+    cs_entry_t *list = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
 
     // --- Directories ---
+    uint8_t cmd_buf[16];
     int cmd_len = cmd_encode_csloader_packet(CMD_CS_FSX, CMD_FSX_LISTDIRS,
                                              NULL, 0, cmd_buf);
     if (cmd_len <= 0)
-        return -1;
+        goto fail;
     if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
+        goto fail;
+
+    if (serial_wait_ack(port, 10 * TIMEOUT) != 0)
         return -1;
 
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 5 * TIMEOUT);
+    int rcv_len = serial_read(port, resp, sizeof(resp), 10 * TIMEOUT);
     if (rcv_len <= 0)
-        return -1;
+        goto fail;
     if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
-        return -1;
+        goto fail;
     if (repl.length < 4 || repl.data[1] != 0)
-        return -1;
+        goto fail;
 
     pos = 2;
     uint16_t numdirs = *(uint16_t *)&repl.data[pos];
@@ -651,37 +709,12 @@ int csloader_list(struct sp_port *port)
 
     for (int i = 0; i < numdirs; i++)
     {
-        size_t l = 0;
-        for (; pos + l + 1 < repl.length; l += 2)
-        {
-            if (*(uint16_t *)&repl.data[pos + l] == 0)
-            {
-                l += 2; // include null terminator
-                break;
-            }
-        }
-        if (pos + l > repl.length)
-            return -1;
-
-        size_t len;
         char dirname[256];
-        if (ucs2_to_ascii(repl.data, repl.length, pos,
-                          dirname, sizeof(dirname), &len) != 0)
-        {
-            fprintf(stderr, "parse error at pos=%zu\n", pos);
-            return -1;
-        }
+        size_t len;
+        if (ucs2_to_ascii(repl.data, repl.length, pos, dirname, sizeof(dirname), &len) != 0)
+            goto fail;
 
-        csloader_stat(port, dirname, &st);
-
-        printf("[D] %-30s ", dirname);
-        printf("%6u KB (%08X) ", st.st_size / 1024, st.st_mode);
-
-        char tbuf[64];
-        time_t mt = st.st_mtime;
-        strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", localtime(&mt));
-        printf(" %s\n", tbuf);
-
+        ADD_ENTRY(dirname, 1); // Directory
         pos += len;
     }
 
@@ -689,18 +722,20 @@ int csloader_list(struct sp_port *port)
     cmd_len = cmd_encode_csloader_packet(CMD_CS_FSX, CMD_FSX_LISTFILES,
                                          NULL, 0, cmd_buf);
     if (cmd_len <= 0)
-        return -1;
+        goto fail;
     if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
+        goto fail;
+
+    if (serial_wait_ack(port, 10 * TIMEOUT) != 0)
         return -1;
 
-    rcv_len = serial_wait_packet(port, resp, sizeof(resp), 10 * TIMEOUT);
+    rcv_len = serial_read(port, resp, sizeof(resp), 10 * TIMEOUT);
     if (rcv_len <= 0)
-        return -1;
-
+        goto fail;
     if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
-        return -1;
+        goto fail;
     if (repl.length < 4 || repl.data[1] != 0)
-        return -1;
+        goto fail;
 
     pos = 2;
     uint16_t numfiles = *(uint16_t *)&repl.data[pos];
@@ -708,40 +743,22 @@ int csloader_list(struct sp_port *port)
 
     for (int i = 0; i < numfiles; i++)
     {
-        size_t l = 0;
-        for (; pos + l + 1 < repl.length; l += 2)
-        {
-            if (*(uint16_t *)&repl.data[pos + l] == 0)
-            {
-                l += 2; // include null terminator
-                break;
-            }
-        }
-        if (pos + l > repl.length)
-            return -1;
-
-        size_t len;
         char filename[256];
+        size_t len;
+        if (ucs2_to_ascii(repl.data, repl.length, pos, filename, sizeof(filename), &len) != 0)
+            goto fail;
 
-        if (ucs2_to_ascii(repl.data, repl.length, pos,
-                          filename, sizeof(filename), &len) != 0)
-        {
-            fprintf(stderr, "parse error at pos=%zu\n", pos);
-            return -1;
-        }
-        csloader_stat(port, filename, &st);
-
-        printf("[F] %-30s ", filename);
-        printf("%6u KB (%08X) ", st.st_size / 1024, st.st_mode);
-        char tbuf[64];
-        time_t mt = st.st_mtime;
-        strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", localtime(&mt));
-        printf(" %s\n", tbuf);
-
+        ADD_ENTRY(filename, 0); // File
         pos += len;
     }
 
+    *out_list = list;
+    *out_count = count;
     return 0;
+
+fail:
+    free(list);
+    return -1;
 }
 
 int csloader_make_directory(struct sp_port *port, const char *dirname)
@@ -778,7 +795,7 @@ int csloader_make_directory(struct sp_port *port, const char *dirname)
         return -1;
 
     uint8_t resp[8];
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 10 * TIMEOUT);
+    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 3 * TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -788,7 +805,7 @@ int csloader_make_directory(struct sp_port *port, const char *dirname)
 
     if (repl.cmd != CMD_CS_FSX)
     {
-        fprintf(stderr, "Bad reply %02X expected 0x03\n", repl.cmd);
+        fprintf(stderr, "Bad reply %02X expected %02X\n", repl.cmd, CMD_CS_FSX);
         return -1;
     }
 
@@ -821,7 +838,7 @@ int csloader_delete_file(struct sp_port *port, const char *filename)
         return -1;
 
     uint8_t resp[8];
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 10 * TIMEOUT);
+    int rcv_len = serial_read(port, resp, sizeof(resp), 3 * TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -831,7 +848,7 @@ int csloader_delete_file(struct sp_port *port, const char *filename)
 
     if (repl.cmd != CMD_CS_FSX)
     {
-        fprintf(stderr, "Bad reply %02X expected 0x03\n", repl.cmd);
+        fprintf(stderr, "Bad reply %02X expected %02X\n", repl.cmd, CMD_CS_FSX);
         return -1;
     }
 
@@ -857,7 +874,7 @@ int csloader_delete_directory(struct sp_port *port, const char *dirname)
         return -1;
 
     uint8_t resp[8];
-    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 10 * TIMEOUT);
+    int rcv_len = serial_read(port, resp, sizeof(resp), 3 * TIMEOUT);
     if (rcv_len <= 0)
         return -1;
 
@@ -867,19 +884,19 @@ int csloader_delete_directory(struct sp_port *port, const char *dirname)
 
     if (repl.cmd != CMD_CS_FSX)
     {
-        fprintf(stderr, "Bad reply %02X expected 0x03\n", repl.cmd);
+        fprintf(stderr, "Bad reply %02X expected %02X\n", repl.cmd, CMD_CS_FSX);
         return -1;
     }
 
     return 0;
 }
 
-int csloader_copy_file(struct sp_port *port, const char *name,
-                       size_t filesize, const uint8_t *filebuffer)
+int csloader_put_file(struct sp_port *port, const char *name,
+                      size_t filesize, const uint8_t *filebuffer)
 {
     if (!name || !filebuffer)
     {
-        fprintf(stderr, "Invalid argument(s) passed to csloader_copy_file()\n");
+        fprintf(stderr, "Invalid argument(s) passed to csloader_put_file()\n");
         return -1;
     }
 
@@ -892,20 +909,17 @@ int csloader_copy_file(struct sp_port *port, const char *name,
 
         // mkdir if directory is not exist
         if (name[i + 1] == '/')
-        {
             csloader_make_directory(port, namepart);
-        }
         // remove old file if already exist
         else if (name[i + 1] == '\0')
-        {
             csloader_delete_file(port, namepart);
-        }
     }
 
     // printf("putfile %s\n", name);
 
     uint8_t cmd_buf[0x400];
     size_t offset = 0;
+    printf("\rwrite file: %s %zu/%zu bytes ", name, offset, filesize);
 
     while (offset < filesize)
     {
@@ -967,7 +981,7 @@ int csloader_copy_file(struct sp_port *port, const char *name,
             return -1;
 
         uint8_t resp[8];
-        int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 15 * TIMEOUT);
+        int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 10 * TIMEOUT);
         if (rcv_len <= 0)
             return -1;
 
@@ -982,15 +996,160 @@ int csloader_copy_file(struct sp_port *port, const char *name,
         }
 
         offset += chunk_size;
+        printf("\rwrite file: %s %zu/%zu bytes ", name, offset, filesize);
     }
+
+    printf("\n");
 
     return 0;
 }
 
-int csloader_upload_directory(struct sp_port *port,
-                              const char *src_dir,
-                              const char *src_subdir,
-                              const char *dest_dir)
+int csloader_get_file(struct sp_port *port, const char *local_path, const char *fname)
+{
+    uint8_t cmd_buf[0x100];
+    uint8_t data[0x256];
+    size_t size = 0;
+
+    // --- Encode filename (UCS2) ---
+    size += ascii_to_ucs2(fname, &data[size]);
+
+    // --- Build FSX GETFILE command ---
+    int cmd_len = cmd_encode_csloader_packet(CMD_CS_FSX, CMD_FSX_GETFILE,
+                                             data, size, cmd_buf);
+    if (cmd_len <= 0)
+        return -1;
+
+    // --- Send command ---
+    if (serial_send_packetdata_ack(port, cmd_buf, cmd_len) < 0)
+        return -1;
+
+    uint8_t resp[0x1000 + 7];
+    int rcv_len = serial_wait_packet(port, resp, sizeof(resp), 10 * TIMEOUT);
+    if (rcv_len <= 0)
+        return -1;
+
+    // --- Prepare output file ---
+    FILE *out = fopen(local_path, "wb");
+    if (!out)
+        return -1;
+
+    uint32_t fsize = get_word(&resp[7]);
+    uint32_t buf_size = 0x1000 - 0x7;
+    if (fsize < buf_size)
+    {
+        printf("\rread file: %s %u bytes", fname, fsize);
+        fflush(stdout);
+        fwrite(&resp[0xB], 1, fsize, out);
+        fclose(out);
+        goto exit_ok;
+    }
+
+    struct packetdata_t repl;
+    if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
+        return -1;
+
+    fwrite(&repl.data[6], 1, repl.length - 6, out);
+
+    uint32_t first = repl.length - 6;
+    uint32_t outfs = 0;
+    printf("\rread file %s %u/%u bytes ", fname, outfs + first, fsize);
+    fflush(stdout);
+    while (outfs + first < fsize)
+    {
+        // --- Acknowledge the chunk ---
+        serial_send_ack(port);
+
+        int rcv_len = serial_read(port, resp, sizeof(resp), 2 * TIMEOUT);
+        if (rcv_len <= 0)
+            goto exit_err;
+
+        struct packetdata_t repl;
+        if (cmd_decode_packet(resp, rcv_len, &repl) != 0)
+            goto exit_err;
+
+        if (repl.data[1] != 0)
+        {
+            printf("\nBad data: %02X\n", repl.data[1]);
+            goto exit_err;
+        }
+
+        fwrite(&repl.data[2], 1, repl.length - 2, out);
+
+        outfs += (repl.length - 2);
+        printf("\rread file %s %u/%u bytes ", fname, outfs + first, fsize);
+        fflush(stdout);
+    }
+
+exit_ok:
+    printf("\n");
+    fclose(out);
+    return 0;
+
+exit_err:
+    fclose(out);
+    return -1;
+}
+
+int csloader_read_directory(struct sp_port *port,
+                            const char *src_dir,
+                            const char *dest_dir)
+{
+    // --- Create local directory ---
+    MKDIR(dest_dir);
+
+    // --- Step 1: change & confirm directory ---
+    if (csloader_change_directory(port, src_dir) != 0)
+        return -1;
+
+    char cwd[256];
+    int cwd_len = csloader_get_working_directory(port, cwd, sizeof(cwd));
+    if (cwd_len <= 0)
+        return -1;
+
+    printf("read directory: %s\n", cwd);
+
+    cs_entry_t *entries = NULL;
+    size_t count = 0;
+    if (csloader_list(port, &entries, &count) == 0)
+    {
+        for (size_t i = 0; i < count; i++)
+        {
+            const cs_entry_t *e = &entries[i];
+
+            if (e->d_type)
+            {
+                // --- Build full paths for recursion ---
+                char new_src[512], new_dest[512];
+                if (strcmp(src_dir, "/") == 0)
+                    snprintf(new_src, sizeof(new_src), "/%s", e->name);
+                else
+                    snprintf(new_src, sizeof(new_src), "%s/%s", src_dir, e->name);
+                snprintf(new_dest, sizeof(new_dest), "%s/%s", dest_dir, e->name);
+
+                // --- Recursively download subdirectory ---
+                csloader_read_directory(port, new_src, new_dest);
+
+                // --- Go back to previous directory after recursion
+                csloader_change_directory(port, cwd);
+            }
+            else
+            {
+                // --- Build full local path ---
+                char local_path[512];
+                snprintf(local_path, sizeof(local_path), "%s/%s", dest_dir, e->name);
+                csloader_get_file(port, local_path, e->name);
+            }
+        }
+    }
+
+    free(entries);
+    return 0;
+}
+
+int csloader_write_directory(struct sp_port *port,
+                             const char *src_dir,
+                             const char *src_subdir,
+                             const char *dest_dir)
 {
     size_t filesize = 0;
     uint8_t *filebuff = NULL;
@@ -1032,7 +1191,7 @@ int csloader_upload_directory(struct sp_port *port,
             else
                 snprintf(newsub, sizeof(newsub), "%s", entry);
 
-            if (csloader_upload_directory(port, src_dir, newsub, dest_dir) < 0)
+            if (csloader_write_directory(port, src_dir, newsub, dest_dir) < 0)
             {
                 free(namelist[i]);
                 free(namelist);
@@ -1057,7 +1216,6 @@ int csloader_upload_directory(struct sp_port *port,
             else
                 snprintf(phone_filename, sizeof(phone_filename), "%s/%s", dest_dir, rel_path);
 
-            printf("\n=== %s ===\n", local_filename);
             filebuff = load_file(local_filename, &filesize);
             if (!filebuff)
             {
@@ -1068,16 +1226,9 @@ int csloader_upload_directory(struct sp_port *port,
 
             int ret = 0;
             if (filesize == 0)
-            {
-                printf("-> Deleting: %s (empty file)\n", phone_filename);
                 ret = csloader_delete_file(port, phone_filename);
-            }
             else
-            {
-                printf("-> Uploading:\n  Phone: %s\n  Size : %zu bytes\n\n",
-                       phone_filename, filesize);
-                ret = csloader_copy_file(port, phone_filename, filesize, filebuff);
-            }
+                ret = csloader_put_file(port, phone_filename, filesize, filebuff);
 
             free(filebuff);
             if (ret < 0)
@@ -1111,7 +1262,7 @@ int csloader_upload_zip(struct sp_port *port, const char *zip_filename)
     }
 
     printf("Uploading extracted files...\n");
-    int ret = csloader_upload_directory(port, tmp_dir, "", "/");
+    int ret = csloader_write_directory(port, tmp_dir, "", "/");
 
     // optional: cleanup after upload
     remove_recursive(tmp_dir);

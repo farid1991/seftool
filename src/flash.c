@@ -679,13 +679,14 @@ int flash_detect_fw_version(struct sp_port *port, struct phone_info *phone)
     }
     else if (phone->chip_id == DB2010_1 || phone->chip_id == DB2010_2)
     {
-        if (flash_scan_fw_version(port, phone, 0x44880000, 16 * BLOCK_SIZE) == 0)
+        if (flash_scan_fw_version(port, phone, 0x44800000, 8 * BLOCK_SIZE) == 0) // W200
+            return FLASH_OK;
+        if (flash_scan_fw_version(port, phone, 0x44880000, 16 * BLOCK_SIZE) == 0) // K510/W810/Z550
+            return FLASH_OK;
+        if (flash_scan_fw_version(port, phone, 0x44B00000, 4 * BLOCK_SIZE) == 0) // Z558
             return FLASH_OK;
 
-        if (flash_scan_fw_version(port, phone, 0x447C0000, 4 * BLOCK_SIZE) == 0)
-            return FLASH_OK;
-
-        return flash_scan_fw_version(port, phone, 0x44B00000, 4 * BLOCK_SIZE);
+        return flash_scan_fw_version(port, phone, 0x447C0000, 4 * BLOCK_SIZE);
     }
     else if (phone->chip_id == DB2020)
     {

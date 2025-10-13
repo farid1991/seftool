@@ -10,6 +10,21 @@
 #include "loader.h"
 #include "serial.h"
 
+int pnx_get_rest_name(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs)
+{
+    // CXC article
+    uint8_t resp[64];
+    int len = loader_send_packet_pnx(port, 0x02, 0x0E, 0x15, resp, sizeof(resp));
+    if (len <= 0)
+        return -1;
+    strncpy(gdfs->cxc_article, (char *)resp, len);
+    gdfs->cxc_article[len] = '\0';
+
+    parse_cxc_article_to_rest_name(phone, gdfs->cxc_article);
+
+    return 0;
+}
+
 int gdfs_read_var(struct sp_port *port, struct gdfs_data_t *gdfs, int gd_index,
                   uint8_t block, uint8_t lsb, uint8_t msb)
 {

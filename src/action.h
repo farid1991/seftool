@@ -15,6 +15,7 @@ typedef enum
     ACT_WRITE_SCRIPT,
     ACT_CONVERT,
     ACT_UPLOAD_FS,
+    ACT_DOWNLOAD_FS,
     ACT_UPLOAD_ANYCID
 } action_t;
 
@@ -32,6 +33,9 @@ int action_exec_scripts(struct sp_port *port, struct phone_info *phone,
 int action_convert(const char *cnv_mode, const char *cnv_filename, uint32_t mem_addr);
 int action_upload_to_fs(struct sp_port *port, struct phone_info *phone,
                         const char **src_files, int src_count, const char *dst_dir);
+int action_download_from_fs(struct sp_port *port, struct phone_info *phone,
+                            const char *src_dir,
+                            const char *dest_dir);
 int action_upload_anycid(struct sp_port *port, struct phone_info *phone);
 
 #endif // se_h

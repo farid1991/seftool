@@ -120,7 +120,7 @@ int serial_wait_packet(struct sp_port *port, uint8_t *buf, size_t bufsize, int t
 int serial_wait_ack(struct sp_port *port, int timeout_ms)
 {
     uint8_t resp;
-    size_t rcv_len = serial_read(port, &resp, 1, timeout_ms);
+    size_t rcv_len = serial_wait_packet(port, &resp, 1, timeout_ms);
     if (rcv_len != 1)
     {
         fprintf(stderr, "\n[serial_wait_ack] Timeout\n");

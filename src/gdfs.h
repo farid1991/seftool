@@ -49,6 +49,6 @@ int gdfs_get_userlock(struct sp_port *port, struct gdfs_data_t *gdfs);
 int gdfs_unlock_usercode(struct sp_port *port);
 int gdfs_dump_sec_units(struct sp_port *port, struct phone_info *phone, const char *backup_name);
 int gdfs_terminate_access(struct sp_port *port);
-
+int pnx_get_rest_name(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs);
 
 #endif // gdfs_h

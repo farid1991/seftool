@@ -105,6 +105,8 @@ const char *get_chipset_name(uint16_t chip_id)
 {
     switch (chip_id)
     {
+    case 0x5C06: // T39/T65
+        return "T39";
     case 0x5B07: // "T68/T300/T310/T200/P800";
     case 0x5B08: // "T610/T616/T630/Z600/T2xx/P900"
         return "DB1000";
