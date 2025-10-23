@@ -2,6 +2,7 @@
 #define babe_h
 
 #include <stdint.h>
+#include <stddef.h>
 
 #pragma pack(push, 1)
 struct babehdr_t
