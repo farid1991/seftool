@@ -50,6 +50,10 @@ action_t action_from_string(const char *a)
         return ACT_DOWNLOAD_FS;
     if (strcmp(a, "upload-anycid") == 0)
         return ACT_UPLOAD_ANYCID;
+    if (strcmp(a, "flash-avr") == 0)
+        return ACT_FLASH_AVR;
+    if (strcmp(a, "flash-arm") == 0)
+        return ACT_FLASH_ARM;
     return ACT_NONE;
 }
 

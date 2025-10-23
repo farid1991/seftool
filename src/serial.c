@@ -11,7 +11,26 @@ int serial_open(struct sp_port *port)
 {
     if (sp_open(port, SP_MODE_READ_WRITE) != SP_OK)
         return -1;
-    if (sp_set_baudrate(port, 9600) != SP_OK)
+    if (serial_set_baudrate(port, 9600) != SP_OK)
+        return -1;
+    if (serial_set_rts(port) != SP_OK)
+        return -1;
+
+    return SP_OK;
+}
+
+int serial_close(struct sp_port *port)
+{
+    return sp_close(port);
+}
+
+int serial_set_baudrate(struct sp_port *port, int baudrate)
+{
+    struct timespec ts = {0, 3000000}; // 25 ms sleep
+    // sleep until phone accepts new baudrate
+    nanosleep(&ts, NULL);
+
+    if (sp_set_baudrate(port, baudrate) != SP_OK)
         return -1;
     if (sp_set_bits(port, 8) != SP_OK)
         return -1;
@@ -21,27 +40,26 @@ int serial_open(struct sp_port *port)
         return -1;
     if (sp_set_flowcontrol(port, SP_FLOWCONTROL_NONE) != SP_OK)
         return -1;
+    if (sp_set_dtr(port, SP_DTR_OFF) != SP_OK)
+        return -1;
+    if (sp_set_dtr(port, SP_DTR_ON) != SP_OK)
+        return -1;
+    if (sp_flush(port, SP_BUF_BOTH) != SP_OK)
+        return -1;
 
-    sp_set_rts(port, SP_RTS_OFF);
-    sp_set_dtr(port, SP_DTR_OFF);
-    sp_set_dtr(port, SP_DTR_ON);
-    sp_set_rts(port, SP_RTS_ON);
+    // sleep until phone accepts new baudrate
+    nanosleep(&ts, NULL);
 
-    return SP_OK;
+    return 0;
 }
 
-int serial_set_baudrate(struct sp_port *port, int baudrate)
+int serial_set_rts(struct sp_port *port)
 {
-    struct timespec ts = {0, 1500000}; // 15 ms sleep
-    // sleep until phone accepts new baudrate
-    nanosleep(&ts, NULL);
-
-    int rc = sp_set_baudrate(port, baudrate);
-
-    // sleep until phone accepts new baudrate
-    nanosleep(&ts, NULL);
-
-    return rc;
+    if (sp_set_rts(port, SP_RTS_OFF) != SP_OK)
+        return -1;
+    if (sp_set_rts(port, SP_RTS_ON) != SP_OK)
+        return -1;
+    return 0;
 }
 
 // --- Write helpers ---

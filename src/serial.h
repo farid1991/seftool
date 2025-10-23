@@ -4,7 +4,9 @@
 #include <stdint.h>
 
 int serial_open(struct sp_port *port);
+int serial_close(struct sp_port *port);
 int serial_set_baudrate(struct sp_port *port, int baudrate);
+int serial_set_rts(struct sp_port *port);
 
 // --- Write helpers ---
 int serial_write(struct sp_port *port, const uint8_t *buf, size_t len);

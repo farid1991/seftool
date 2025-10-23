@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(seftool VERSION 1.0 LANGUAGES C)
+project(seftool VERSION 1.1 LANGUAGES C)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
@@ -20,6 +20,9 @@ add_executable(seftool
     src/oflash.c
     src/bflash.c
     src/main.c
+    src/rtz.c
+    src/rtz_arm.c
+    src/rtz_avr.c
     src/scandir.c
     src/serial.c
     src/sha1.c
@@ -32,58 +35,71 @@ set(BUILD_SHARED_LIBS OFF)
 set(ENABLE_COMMONCRYPTO OFF)
 set(ZLIB_USE_STATIC_LIBS ON)
 
-# --- Helper to find static libraries explicitly ---
-function(find_static_library LIB_NAME OUT_VAR)
-    if (WIN32 OR MSVC)
-        set(CMAKE_FIND_LIBRARY_SUFFIXES ".lib" ".a")
-    else()
-        set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
-    endif()
-
-    find_library(${OUT_VAR} NAMES ${LIB_NAME})
-
-    if (NOT ${OUT_VAR})
-        message(FATAL_ERROR "Static library '${LIB_NAME}' not found.")
-    else()
-        message(STATUS "Found static library: ${${OUT_VAR}}")
-    endif()
-endfunction()
-
-# --- Dependencies (prefer static) ---
-# libserialport
-find_static_library(serialport SERIALPORT_LIB)
-
 if (WIN32)
+    # --- Helper to find static libraries (Windows only) ---
+    function(find_static_library LIB_NAME OUT_VAR)
+        set(CMAKE_FIND_LIBRARY_SUFFIXES ".lib" ".a")
+        find_library(${OUT_VAR} NAMES ${LIB_NAME})
+        if (NOT ${OUT_VAR})
+            message(FATAL_ERROR "Static library '${LIB_NAME}' not found.")
+        else()
+            message(STATUS "Found static library: ${${OUT_VAR}}")
+        endif()
+    endfunction()
+
+    # --- Dependencies for Windows ---
+    find_static_library(serialport SERIALPORT_LIB)
+    find_static_library(z ZLIB_LIB)
+    find_static_library(bz2 BZIP2_LIB)
+    find_static_library(minizip MINIZIP_LIB)
+
     target_link_libraries(seftool PRIVATE
         ${SERIALPORT_LIB}
+        ${MINIZIP_LIB}
+        ${ZLIB_LIB}
+        ${BZIP2_LIB}
         setupapi
         cfgmgr32
         advapi32
     )
+
 else()
-    target_link_libraries(seftool PRIVATE ${SERIALPORT_LIB})
+    # --- Dependencies for Linux / macOS ---
+
+    # libserialport
+    find_path(SERIALPORT_INCLUDE_DIR libserialport.h)
+    find_library(SERIALPORT_LIB serialport)
+    if (NOT SERIALPORT_LIB)
+        message(FATAL_ERROR "libserialport not found.")
+    endif()
+
+    # zlib
+    find_package(ZLIB REQUIRED)
+
+    # bzip2 (optional)
+    find_package(BZip2)
+    if (BZIP2_FOUND)
+        target_link_libraries(seftool PRIVATE BZip2::BZip2)
+    endif()
+
+    # minizip
+    find_path(MINIZIP_INCLUDE_DIR minizip/zip.h)
+    find_library(MINIZIP_LIB minizip)
+    if (NOT MINIZIP_LIB)
+        message(FATAL_ERROR "minizip not found.")
+    endif()
+
+    # --- Link all ---
+    target_include_directories(seftool PRIVATE
+        ${SERIALPORT_INCLUDE_DIR}
+        ${MINIZIP_INCLUDE_DIR}
+    )
+    target_link_libraries(seftool PRIVATE
+        ${SERIALPORT_LIB}
+        ${MINIZIP_LIB}
+        ZLIB::ZLIB
+    )
 endif()
-
-# --- Zlib ---
-find_static_library(z ZLIB_LIB)
-if (NOT ZLIB_LIB)
-    message(FATAL_ERROR "Zlib static library not found")
-endif()
-
-# --- BZip2 (optional, but required by Minizip on MSYS2) ---
-find_static_library(bz2 BZIP2_LIB)
-
-# --- Minizip ---
-find_static_library(minizip MINIZIP_LIB)
-if (NOT MINIZIP_LIB)
-    message(FATAL_ERROR "Minizip static library not found")
-endif()
-
-target_link_libraries(seftool PRIVATE
-    ${MINIZIP_LIB}
-    ${ZLIB_LIB}
-    ${BZIP2_LIB}
-)
 
 # --- libusb & libftdi
 # find_package(PkgConfig REQUIRED)

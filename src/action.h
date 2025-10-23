@@ -16,7 +16,9 @@ typedef enum
     ACT_CONVERT,
     ACT_UPLOAD_FS,
     ACT_DOWNLOAD_FS,
-    ACT_UPLOAD_ANYCID
+    ACT_UPLOAD_ANYCID,
+    ACT_FLASH_AVR,
+    ACT_FLASH_ARM,
 } action_t;
 
 action_t action_from_string(const char *a);

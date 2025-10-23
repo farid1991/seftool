@@ -9,7 +9,7 @@
 #include "common.h"
 #include "serial.h"
 
-int set_speed(struct sp_port *port, struct phone_info *phone)
+int connection_set_speed(struct sp_port *port, struct phone_info *phone)
 {
     // --- DB2000 has max 460800 ---
     if (phone->chip_id == DB2000 && phone->baudrate > 460800)
@@ -38,7 +38,8 @@ int set_speed(struct sp_port *port, struct phone_info *phone)
         serial_write(port, (uint8_t *)"S4", 2); // fallback to 115200
     }
 
-    printf("SPEED: %d\n\n", phone->baudrate);
+    if (phone->avr_ignore_print == 0)
+        printf("SPEED: %d\n\n", phone->baudrate);
 
     if (serial_set_baudrate(port, phone->baudrate) != SP_OK)
     {
@@ -49,10 +50,13 @@ int set_speed(struct sp_port *port, struct phone_info *phone)
     return SP_OK;
 }
 
-int wait_for_Z(struct sp_port *port)
+int wait_for_Z(struct sp_port *port, struct phone_info *phone)
 {
-    printf("Powering phone\n");
-    printf("Waiting for reply (30s timeout):\n");
+    if (phone->avr_ignore_print == 0)
+    {
+        printf("Powering phone\n");
+        printf("Waiting for reply (30s timeout):\n");
+    }
 
     uint8_t c;
     struct timespec start, now;
@@ -67,8 +71,11 @@ int wait_for_Z(struct sp_port *port)
         {
             if (c == 'Z') // Sony Ericsson reply with 'Z'
             {
-                printf("\nConnected\n");
-                printf("\nDetected Sony Ericsson\n");
+                if (phone->avr_ignore_print == 0)
+                {
+                    printf("\nConnected\n");
+                    printf("\nDetected Sony Ericsson\n");
+                }
                 return SP_OK; // success
             }
         }
@@ -82,8 +89,11 @@ int wait_for_Z(struct sp_port *port)
 
         if (remaining != last_print && remaining >= 0)
         {
-            printf("\r%2d seconds remaining...", remaining);
-            fflush(stdout);
+            if (phone->avr_ignore_print == 0)
+            {
+                printf("\r%2d seconds remaining...", remaining);
+                fflush(stdout);
+            }
             last_print = remaining;
         }
 
@@ -115,17 +125,13 @@ int send_question_mark(struct sp_port *port, struct phone_info *phone)
     phone->protocol_minor = (resp[3] == 0xFF) ? 0 : resp[3];
     phone->new_security = (resp[4] == 0x01);
 
-    printf("Chip ID: %04X%s, Platform: %s \n", phone->chip_id,
-           phone->new_security ? " [RESPIN]" : "",
-           get_chipset_name(phone->chip_id));
-    printf("EMP Protocol: %02d.%02d\n", phone->protocol_major, phone->protocol_minor);
-
-    if (phone->protocol_major != 3 || phone->protocol_minor != 1)
+    if (phone->avr_ignore_print == 0)
     {
-        fprintf(stderr, "EMP Protocol %02d.%02d is not supported (yet)", phone->protocol_major, phone->protocol_minor);
-        return -1;
+        printf("Chip ID: %04X%s, Platform: %s \n", phone->chip_id,
+               phone->new_security ? " [RESPIN]" : "",
+               get_chipset_name(phone->chip_id));
+        printf("EMP Protocol: %02d.%02d\n", phone->protocol_major, phone->protocol_minor);
     }
-
     return 0;
 }
 
@@ -148,14 +154,16 @@ int get_connection_type(struct sp_port *port, struct phone_info *phone)
     else
         phone->connect_mode = USB_CONNECTION;
 
-    printf("CONNECTION: %s\n", phone->connect_mode ? "USB" : "SERIAL");
-
+    if (phone->avr_ignore_print == 0)
+    {
+        printf("CONNECTION: %s\n", phone->connect_mode ? "USB" : "SERIAL");
+    }
     return 0;
 }
 
 int erom_get_info(struct sp_port *port, struct phone_info *phone)
 {
-    if (phone->chip_id == DB2020 || phone->chip_id == 0x5B07 || phone->chip_id == 0x5B08)
+    if (phone->chip_id == DB2020)
         return 0;
 
     uint8_t resp[128];
@@ -236,21 +244,26 @@ int erom_get_info(struct sp_port *port, struct phone_info *phone)
 
 int connection_open(struct sp_port *port, struct phone_info *phone)
 {
-    phone->qhldr_sent = 0;
-    phone->break_cid29 = 0;
-    phone->break_cid36 = 0;
-
     if (serial_open(port) != 0)
         return -1;
-    if (wait_for_Z(port) != 0)
+    if (wait_for_Z(port, phone) != 0)
         return -1;
     if (send_question_mark(port, phone) != 0)
         return -1;
     if (get_connection_type(port, phone) != 0)
         return -1;
-    if (erom_get_info(port, phone) != 0)
-        return -1;
-    if (set_speed(port, phone) != 0)
+
+    if (phone->protocol_major == 3 && phone->protocol_minor == 1)
+    {
+        phone->qhldr_sent = 0;
+        phone->break_cid29 = 0;
+        phone->break_cid36 = 0;
+
+        if (erom_get_info(port, phone) != 0)
+            return -1;
+    }
+
+    if (connection_set_speed(port, phone) != 0)
         return -1;
 
     return 0;
@@ -258,5 +271,5 @@ int connection_open(struct sp_port *port, struct phone_info *phone)
 
 int connection_close(struct sp_port *port)
 {
-    return sp_close(port);
+    return serial_close(port);
 }

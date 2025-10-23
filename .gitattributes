@@ -1,0 +1,7 @@
+# 1. Set a default for all files: auto-detect and normalize text files to LF in the repo.
+* text=auto eol=lf
+*.sh text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+*.cmake text eol=lf
+*.bat text eol=crlf

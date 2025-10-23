@@ -9,7 +9,7 @@
                                           
 # SEFTool / SE Flash Tool
 
-A command-line utility for flashing, unlocking, and managing Sony Ericsson phones (A1 platform) over a serial connection.  
+A command-line utility for flashing, unlocking, and managing Sony Ericsson AVR & ARM phones (DB1000, DB2000, DB2010, DB2012, DB2020, PNX5230) over a serial connection.  
 Supports firmware flashing and patching, GDFS (phone data) backup/restore, flash reading, and basic unlock operations.
 
 ---
@@ -97,8 +97,8 @@ mingw32-make
 ```sh
 Usage: ./seftool -p <port> [-b <baudrate>] -a <action>
 ```
+### Options:
 ```
-Options:
   -p, --port <name>       Serial port name (e.g. COM2, /dev/ttyUSB0)
   -b, --baud <rate>       Baudrate (default: 115200)
   -a, --action <action>   Action:
@@ -121,7 +121,28 @@ Global options:
   -h, --help              Show this help message
 
 ```
+## Platform-specific action summary
 
+#### Platform: pre-A1 (DB1000 — chip IDs 0x5807, 0x5808)
+* identify — Identify phone and show basic info
+* flash-avr <avr_file> — Flash AVR MCU firmware
+* flash-arm <arm_file> — Flash ARM/DSP firmware
+
+#### Platform: A1 (DB2000 / DB2010 / DB2012 / DB2020 / PNX5230)
+* identify — Identify phone and show basic info
+* flash [main <file>] [fs <file>] [cda <file>] — Flash MAIN / FS firmware and/or upload CDA
+* read-flash start <addr> size <bytes> | block <count> — Read flash (specify start & size or block count)
+* read-gdfs — Backup GDFS area
+* write-gdfs <filename> — Restore GDFS from file
+* write-script <file1> [file2 ...] — Apply VKP or GDFS script(s)
+* unlock <usercode|simlock> — Unlock user code or SIM lock
+* fsx-upload src <local...> [dest <fs path>] — Upload files to internal FS
+* fsx-download src <fs path>/<file> [dest <local>] — Download files from internal FS
+* upload-anycid — Upload AnyCID package for exploit access
+
+#### Utility actions
+* convert babe2raw <filename> — Convert BABE -> raw
+* convert raw2babe <filename> <addr> — Convert raw -> BABE at address
 ---
 
 ## Supported devices
@@ -209,6 +230,16 @@ $ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash main main.mbn fs fs.fbn cda cda.z
 #### Flash main only:
 ```sh
 $ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash main main.mbn
+```
+
+#### Flash ARM firmware (DB1000):
+```sh
+$ ./seftool -p /dev/ttyUSB0 -b 115200 -a flash-arm T610_R6C005_TAE.arm
+```
+
+#### Flash AVR firmware (DB1000):
+```sh
+$ ./seftool -p /dev/ttyUSB0 -b 115200 -a flash-avr T610_R6C005_ASIAN_LAT_1_EN-ID-MS.bin
 ```
 
 #### Flash filesystem only:
@@ -357,6 +388,8 @@ Using `seftool` may permanently damage your device if used incorrectly.
 * Restore firmware files are included in `./rest` (packaged alongside the executable).  
   `.rest` files are generated with **mkrest2** by **den_po**.
 * Anycid package files are included in `./anycid` (packaged alongside the executable).
+* Only support bin firmware for **flash-avr** right now.
+* **flash-arm** only support max baudrate **115200**
 ---
 
 ## TODO

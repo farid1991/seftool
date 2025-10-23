@@ -6,6 +6,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <time.h>
 
 #ifdef _WIN32
 #include <direct.h> // _mkdir
@@ -57,6 +58,26 @@ void set_word(uint8_t *p, uint32_t v)
     p[2] = (v >> 16) & 0xFF;
     p[1] = (v >> 8) & 0xFF;
     p[0] = v & 0xFF;
+}
+
+uint8_t simple_crc_add(const uint8_t *ptr, size_t size)
+{
+    uint8_t ret = 0;
+    for (size_t i = 0; i < size; i++)
+    {
+        ret += ptr[i];
+    }
+    return ret;
+}
+
+uint8_t simple_crc_xor(const uint8_t *ptr, size_t size)
+{
+    uint8_t ret = 0;
+    for (size_t i = 0; i < size; i++)
+    {
+        ret ^= ptr[i];
+    }
+    return ret;
 }
 
 void decode_bcd(const uint8_t *in, int len, char *out, size_t out_size)
@@ -611,4 +632,27 @@ int remove_recursive(const char *path)
     }
 
     return 0;
+}
+
+// Random helpers
+static uint32_t rndseed;
+
+void randomize(void)
+{
+    rndseed = (uint32_t)time(NULL);
+}
+
+// Variant 1 — simple LCG with modulo
+uint32_t random1(uint32_t arg)
+{
+    rndseed = rndseed * 0x8088405u + 1;
+    return (arg == 0) ? 0 : (rndseed % arg);
+}
+
+// Variant 2 — better uniformity (default)
+uint32_t random2(uint32_t arg)
+{
+    rndseed = rndseed * 0x8088405u + 1;
+    uint64_t product = (uint64_t)rndseed * arg;
+    return (uint32_t)(product >> 32);
 }

@@ -22,6 +22,9 @@
 #define SERIAL_CMD3C 0x3C
 #define SERIAL_CMD3E 0x3E
 
+#define EMP_PROTOCOL_2 2
+#define EMP_PROTOCOL_3 3
+
 #define DB2000 0x7100
 #define DB2010_1 0x8000
 #define DB2010_2 0x8040
@@ -64,7 +67,7 @@ struct phone_info
     uint8_t otp_locked;
     uint16_t otp_cid;
     uint8_t otp_paf;
-    char otp_imei[15];
+    char otp_imei[16];
 
     // state
     int qhldr_sent;
@@ -79,6 +82,10 @@ struct phone_info
     char bootname[32];
     char osename[32];
     char hdrname[32];
+
+    //AVR
+    int avr_ignore_print;
+    char gdfs_imei[16];
 };
 
 // ---------- byte helper ----------
@@ -88,6 +95,9 @@ uint16_t get_half(uint8_t *p); // 16-bit LE
 void set_half(uint8_t *p, uint16_t v);
 uint32_t get_word(uint8_t *p); // 32-bit LE
 void set_word(uint8_t *p, uint32_t v);
+
+uint8_t simple_crc_add(const uint8_t *ptr, size_t size);
+uint8_t simple_crc_xor(const uint8_t *ptr, size_t size);
 
 void decode_bcd(const uint8_t *in, int len, char *out, size_t out_size);
 
@@ -117,5 +127,9 @@ int ucs2_to_ascii(const uint8_t *buf, size_t buflen,
 int ends_with(const char *str, const char *suffix);
 void normalize_path(char *path);
 int remove_recursive(const char *path);
+
+void randomize(void);
+uint32_t random1(uint32_t arg);
+uint32_t random2(uint32_t arg);
 
 #endif // common_h
