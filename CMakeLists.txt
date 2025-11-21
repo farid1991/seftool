@@ -1,33 +1,24 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(seftool VERSION 1.1 LANGUAGES C)
+project(seftool VERSION 1.05 LANGUAGES C)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
-# Sources
-add_executable(seftool
-    src/action.c
-    src/babe.c
-    src/break.c
-    src/certz.c
-    src/common.c
-    src/cmd.c
-    src/connection.c
-    src/csloader.c
-    src/flash.c
-    src/gdfs.c
-    src/loader.c
-    src/oflash.c
-    src/bflash.c
-    src/main.c
-    src/rtz.c
-    src/rtz_arm.c
-    src/rtz_avr.c
-    src/scandir.c
-    src/serial.c
-    src/sha1.c
-    src/vkp.c
-    src/zipper.c
+# Source files
+file(GLOB_RECURSE SEFTOOL_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+)
+
+# Executable
+add_executable(seftool ${SEFTOOL_SOURCES})
+
+# Include directories
+target_include_directories(seftool PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/emp/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/eric/common
 )
 
 # --- Set static libs ---

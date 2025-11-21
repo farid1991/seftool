@@ -1,15 +1,15 @@
 ```
-███████╗███████╗███████╗████████╗ ██████╗  ██████╗ ██╗     
-██╔════╝██╔════╝██╔════╝╚══██╔══╝██╔═══██╗██╔═══██╗██║     
-███████╗█████╗  █████╗     ██║   ██║   ██║██║   ██║██║     
-╚════██║██╔══╝  ██╔══╝     ██║   ██║   ██║██║   ██║██║     
+███████╗███████╗███████╗████████╗ ██████╗  ██████╗ ██╗
+██╔════╝██╔════╝██╔════╝╚══██╔══╝██╔═══██╗██╔═══██╗██║
+███████╗█████╗  █████╗     ██║   ██║   ██║██║   ██║██║
+╚════██║██╔══╝  ██╔══╝     ██║   ██║   ██║██║   ██║██║
 ███████║███████╗██║        ██║   ╚██████╔╝╚██████╔╝███████╗
-╚══════╝╚══════╝╚═╝        ╚═╝    ╚═════╝  ╚═════╝ ╚══════╝               
+╚══════╝╚══════╝╚═╝        ╚═╝    ╚═════╝  ╚═════╝ ╚══════╝
 ```
-                                          
+
 # SEFTool / SE Flash Tool
 
-A command-line utility for flashing, unlocking, and managing Sony Ericsson AVR & ARM phones (DB1000, DB2000, DB2010, DB2012, DB2020, PNX5230) over a serial connection.  
+A command-line utility for flashing, unlocking, and managing Sony Ericsson AVR & ARM phones (DB1000, DB2000, DB2010, DB2012, DB2020, PNX5230) over a serial connection.
 Supports firmware flashing and patching, GDFS (phone data) backup/restore, flash reading, and basic unlock operations.
 
 ---
@@ -99,27 +99,54 @@ Usage: ./seftool -p <port> [-b <baudrate>] -a <action>
 ```
 ### Options:
 ```
-  -p, --port <name>       Serial port name (e.g. COM2, /dev/ttyUSB0)
-  -b, --baud <rate>       Baudrate (default: 115200)
-  -a, --action <action>   Action:
-                          identify
-                          flash [main <file>] [fs <file>] [cda <file>]
-                          read-flash start <addr> size <bytes> OR block <count>
-                            [save-as-babe]
-                          read-gdfs
-                          write-gdfs <filename>
-                          write-script <file1> [file2 ...]
-                          unlock <usercode|simlock>
-                          fsx-upload src <local path/file/zip> [dest <fs path>]
-                          fsx-download src <fs path>/<file> [dest <local path>]
-                          upload-anycid
-                          convert babe2raw <filename>
-                          convert raw2babe <filename> <addr>
-Global options:
-    --anycid              Ignore CID restrictions (DB2012/DB2020/PNX5230)
-    --break-rsa           Break RSA on DB2000 & DB2010 RED49
-  -h, --help              Show this help message
+    -p, --port <name>                    Serial port name (e.g. COM2, /dev/ttyUSB0)
+    -b, --baud <rate>                    Baudrate (default: 115200)
+    -a, --action <action>                Specify an action (see below)
 
+General action:
+    identify                             Identify phone and show basic info
+
+Ericsson
+Platform: Z80
+Available actions:
+    identify                             Identify phone and show basic info
+    read-eeprom                          Backup EEPROM area
+    write-eeprom <eeprom_file>           Restore EEPROM area
+
+Platform: AVR
+Available actions:
+    identify                             Identify phone and show basic info
+
+Sony Ericsson
+Platform: pre-A1 (DB1000)
+Available actions:
+    identify                             Identify phone and show basic info
+    flash-avr <avr_file>                 Flash AVR MCU firmware
+    flash-arm <arm_file>                 Flash ARM/DSP firmware
+
+Platform: A1 (DB2000 / DB2010 / DB2012 / DB2020 / PNX5230)
+Available actions:
+    identify                                             Identify phone and show basic info
+    flash [main <file>] [fs <file>] [cda <file>]         Flash MAIN / FS firmware and/or upload CDA
+    read-flash start <addr> size <bytes> | block <count> Read flash (specify start & size or block count)
+    read-gdfs                                            Backup GDFS area
+    write-gdfs <filename>                                Restore GDFS from file
+    write-script <file1> [file2 ...]                     Apply VKP or GDFS script(s)
+    unlock <usercode|simlock>                            Unlock user code or SIM lock
+    fsx-upload src <local...> [dest <fs path>]           Upload files to internal FS
+    fsx-download src <fs path>/<file> [dest <local>]     Download files from internal FS
+    upload-anycid                                        Upload AnyCID package for exploit access
+
+Utility actions:
+    convert babe2raw <filename>          Convert BABE -> raw
+    convert raw2babe <filename> <addr>   Convert raw -> BABE at address
+
+A1 Global options:
+    --anycid                             Ignore CID restrictions (DB2012/DB2020/PNX5230)
+    --break-rsa                          Break RSA on DB2000 & DB2010 RED49
+
+General options:
+    -h, --help                           Show this help message
 ```
 ## Platform-specific action summary
 
@@ -253,7 +280,7 @@ $ ./seftool -p /dev/ttyUSB0 -b 921600 -a flash cda cda.zip
 ```
 
 #### Cross-flash DB201x CID49 (example: K310 → W200)
-Some DB201x phones (e.g. K310) can be flashed with firmware from a different model (e.g. W200).  
+Some DB201x phones (e.g. K310) can be flashed with firmware from a different model (e.g. W200).
 This requires enabling RSA-break, otherwise the flash is rejected due to CID mismatch.
 
 ```sh
@@ -370,11 +397,11 @@ $ ./seftool -a convert raw2babe prgCXC1250594_GENERIC_AL.bin 0x20100000
 ---
 
 ## Disclaimer
-This software is provided **"as is"**, without any warranty of any kind.  
-Using `seftool` may permanently damage your device if used incorrectly.  
+This software is provided **"as is"**, without any warranty of any kind.
+Using `seftool` may permanently damage your device if used incorrectly.
 
-- Always make backups before writing to flash or GDFS.  
-- The authors and contributors are **not responsible** for any data loss, malfunction, or device damage caused by this tool.  
+- Always make backups before writing to flash or GDFS.
+- The authors and contributors are **not responsible** for any data loss, malfunction, or device damage caused by this tool.
 - Interruption during flashing or GDFS operations will not permanently brick the phone, but it may leave it in a corrupted state until reflashed.
 - Use at your own risk.
 
@@ -385,11 +412,12 @@ Using `seftool` may permanently damage your device if used incorrectly.
 * Backups are automatically saved in a backup/ directory when using identify, read-gdfs, write-gdfs, or read-flash.
 * Use a stable power supply(battery 50%++) and reliable serial connection when flashing to avoid bricking the phone.
 * **DB2000** has max **460800** baudrate.
-* Restore firmware files are included in `./rest` (packaged alongside the executable).  
+* Restore firmware files are included in `./rest` (packaged alongside the executable).
   `.rest` files are generated with **mkrest2** by **den_po**.
 * Anycid package files are included in `./anycid` (packaged alongside the executable).
 * Only support bin firmware for **flash-avr** right now.
 * **flash-arm** only support max baudrate **115200**
+* AVR devices only support firmware with raw/bin format.
 ---
 
 ## TODO
@@ -401,12 +429,13 @@ Using `seftool` may permanently damage your device if used incorrectly.
 6. ~~Read file(s) / directory from FS~~
 7. Implement *mkrest* action
 8. SIM unlock by patch
-9. ...
+9. Fix SBN Flash on Ericsson and early SE AVR devices
+10. ...
 
 ---
 
 ## Contributing
-Contributions are welcome!  
+Contributions are welcome!
 You can help by:
 - Reporting bugs or issues via GitHub Issues
 - Adding support for new chipsets or features
@@ -424,8 +453,8 @@ Please follow existing code style (C99, consistent formatting, warnings enabled)
 ---
 
 ## Credits
-- [**the_laser**](https://support.setool.net/) – setool creator  
-- [**den_po**](https://github.com/justdanpo) - jdflasher creator 
+- [**the_laser**](https://support.setool.net/) – setool creator
+- [**den_po**](https://github.com/justdanpo) - jdflasher creator
 - **phoneXS team** - xs++ creator
 - **fixeria** - help with gdfs format structure
 - **B-Con** – [crypto-algorithms](https://github.com/B-Con/crypto-algorithms) (SHA1 implementation)

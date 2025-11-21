@@ -1,0 +1,56 @@
+# .clang-format
+# Recommended clang-format >= 9 (better with >=10)
+---
+Language:        Cpp
+BasedOnStyle:    LLVM
+
+# Tabs / indents
+UseTab:          ForIndentation
+TabWidth:        8
+IndentWidth:     8
+ContinuationIndentWidth: 8
+
+# Line length
+ColumnLimit:     120
+
+# Pointer alignment: "Right" => `int *ptr;` (asterisk next to variable)
+PointerAlignment: Right
+DerivePointerAlignment: false
+
+# Brace placement: kernel puts function open-brace on new line, control statements keep brace on same line
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction:      true     # function() \n {  (Allman for functions)
+  AfterControlStatement: false # if (...) {  (K&R for controls)
+  AfterClass:          false
+  AfterNamespace:      false
+  BeforeElse:          false
+  IndentBraces:        false
+
+# Spaces
+SpaceBeforeParens: ControlStatements  # `if (cond)` matches kernel
+SpaceAfterControlStatementKeyword: false
+SpacesInParentheses: false
+SpacesInConditionalStatement: false
+SpacesBeforeTrailingComments: 1
+
+# Keep short constructs expanded (do not pack many statements on one line)
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: false
+
+# Alignments and formatting choices
+AlignConsecutiveDeclarations: false
+AlignConsecutiveAssignments: false
+AlignTrailingComments: false
+
+# Keep includes order as-is (kernel doesn't force alphabetical include sorting)
+SortIncludes: false
+
+# Preprocessor & macros
+IndentPPDirectives: None
+
+# Misc
+ReflowComments:     false
+PenaltyBreakBeforeFirstCallParameter: 200
+MaxEmptyLinesToKeep: 1

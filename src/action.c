@@ -2,814 +2,350 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <time.h>
 #include <libserialport.h>
 
-#ifdef _WIN32
-#include <io.h>
-#define access _access
-#else
-#include <unistd.h>
-#endif
+#include <core/common.h>
+#include <emp/v2/rtz.h>
+#include <emp/v3/flash.h>
+#include <emp/v3/loader.h>
 
-#include "babe.h"
-#include "common.h"
-#include "cmd.h"
-#include "connection.h"
-#include "csloader.h"
-#include "flash.h"
-#include "loader.h"
-#include "gdfs.h"
-#include "serial.h"
 #include "action.h"
-#include "vkp.h"
 
 action_t action_from_string(const char *a)
 {
-    if (!a)
-        return ACT_NONE;
-    if (strcmp(a, "identify") == 0)
-        return ACT_IDENTIFY;
-    if (strcmp(a, "flash") == 0)
-        return ACT_FLASH;
-    if (strcmp(a, "read-flash") == 0)
-        return ACT_READ_FLASH;
-    if (strcmp(a, "read-gdfs") == 0)
-        return ACT_READ_GDFS;
-    if (strcmp(a, "write-gdfs") == 0)
-        return ACT_WRITE_GDFS;
-    if (strcmp(a, "write-script") == 0)
-        return ACT_WRITE_SCRIPT;
-    if (strcmp(a, "unlock") == 0)
-        return ACT_UNLOCK;
-    if (strcmp(a, "convert") == 0)
-        return ACT_CONVERT;
-    if (strcmp(a, "fsx-upload") == 0)
-        return ACT_UPLOAD_FS;
-    if (strcmp(a, "fsx-download") == 0)
-        return ACT_DOWNLOAD_FS;
-    if (strcmp(a, "upload-anycid") == 0)
-        return ACT_UPLOAD_ANYCID;
-    if (strcmp(a, "flash-avr") == 0)
-        return ACT_FLASH_AVR;
-    if (strcmp(a, "flash-arm") == 0)
-        return ACT_FLASH_ARM;
-    return ACT_NONE;
+	if (!a)
+		return ACT_NONE;
+	if (strcmp(a, "identify") == 0)
+		return ACT_IDENTIFY;
+	if (strcmp(a, "flash") == 0)
+		return ACT_FLASH;
+	if (strcmp(a, "read-flash") == 0)
+		return ACT_READ_FLASH;
+	if (strcmp(a, "read-gdfs") == 0)
+		return ACT_READ_GDFS;
+	if (strcmp(a, "write-gdfs") == 0)
+		return ACT_WRITE_GDFS;
+	if (strcmp(a, "write-script") == 0)
+		return ACT_WRITE_SCRIPT;
+	if (strcmp(a, "unlock") == 0)
+		return ACT_UNLOCK;
+	if (strcmp(a, "convert") == 0)
+		return ACT_CONVERT;
+	if (strcmp(a, "fsx-upload") == 0)
+		return ACT_UPLOAD_FS;
+	if (strcmp(a, "fsx-download") == 0)
+		return ACT_DOWNLOAD_FS;
+	if (strcmp(a, "upload-anycid") == 0)
+		return ACT_UPLOAD_ANYCID;
+	if (strcmp(a, "unlock-avr") == 0)
+		return ACT_UNLOCK_AVR;
+	if (strcmp(a, "flash-avr") == 0)
+		return ACT_FLASH_AVR;
+	if (strcmp(a, "read-avr") == 0)
+		return ACT_READ_AVR;
+	if (strcmp(a, "flash-arm") == 0)
+		return ACT_FLASH_ARM;
+	if (strcmp(a, "read-arm") == 0)
+		return ACT_READ_ARM;
+	if (strcmp(a, "flash-z80") == 0)
+		return ACT_FLASH_Z80;
+	if (strcmp(a, "read-z80") == 0)
+		return ACT_READ_Z80;
+	if (strcmp(a, "read-eeprom") == 0)
+		return ACT_READ_EEPROM;
+	if (strcmp(a, "write-eeprom") == 0)
+		return ACT_WRITE_EEPROM;
+	return ACT_NONE;
 }
 
-int unlock_usercode_db2020_pnx5230(struct sp_port *port, struct phone_info *phone)
+// Ericsson AVR devices
+int action_phone_avr(struct sp_port *port, struct phone_info *phone, action_t act, cli_args *args)
 {
-    if (loader_send_ofs_ldr(port, phone) != 0)
-        return -1;
-
-    if (gdfs_unlock_usercode(port) != 0)
-        return -1;
-
-    if (gdfs_terminate_access(port) != 0)
-        return -1;
-
-    return 0;
+	/* execute action */
+	switch (act) {
+	case ACT_IDENTIFY:
+		if (action_avr_identify(port, phone) != 0)
+			return -1;
+		break;
+	case ACT_READ_EEPROM:
+		if (action_avr_read_eeprom(port, phone) != 0)
+			return -1;
+		break;
+	case ACT_WRITE_EEPROM:
+		if (action_avr_write_eeprom(port, phone, args->eeprom_file) != 0)
+			return -1;
+		break;
+	case ACT_NONE:
+	default:
+		fprintf(stderr, "Error: unknown or unsupported action '%s'\n", args->action ? args->action : "(null)");
+		return -1;
+	}
+	return 0;
 }
 
-int unlock_usercode_db2000_db2010(struct sp_port *port, struct phone_info *phone)
+// Ericsson Z80 devices
+int action_phone_z80(struct sp_port *port, struct phone_info *phone, action_t act, cli_args *args)
 {
-    if (loader_enter_flashmode(port, phone) != 0)
-        return -1;
+	/* execute action */
+	switch (act) {
+	case ACT_IDENTIFY:
+		if (action_z80_identify(port, phone) != 0)
+			return -1;
+		break;
 
-    if (loader_activate_gdfs(port) != 0)
-        return -1;
+	case ACT_READ_EEPROM:
+		if (action_z80_read_eeprom(port, phone) != 0)
+			return -1;
+		break;
 
-    struct gdfs_data_t gdfs = {0};
-    gdfs_get_userlock(port, &gdfs);
-    printf("\nUser code: %s\n\n", gdfs.user_lock);
+	case ACT_WRITE_EEPROM:
+		if (action_z80_write_eeprom(port, phone, args->eeprom_file) != 0)
+			return -1;
+		break;
 
-    return 0;
+	case ACT_UNLOCK:
+		if (strcmp(args->unlock_target, "usercode") == 0) {
+			if (action_z80_unlock_usercode(port, phone) != 0)
+				return -1;
+		} else if (strcmp(args->unlock_target, "simlock") == 0) {
+			printf("Not implemented (yet)\n");
+		}
+		break;
+
+	case ACT_NONE:
+	default:
+		fprintf(stderr, "Error: unknown or unsupported action '%s'\n", args->action ? args->action : "(null)");
+		return -1;
+	}
+	return 0;
 }
 
-int action_unlock_usercode(struct sp_port *port, struct phone_info *phone)
+// Late Ericsson devices
+int action_emp_v1(struct sp_port *port, struct phone_info *phone, action_t act, cli_args *args)
 {
-    switch (phone->chip_id)
-    {
-    case DB2000:
-    case DB2010_1:
-    case DB2010_2:
-        return unlock_usercode_db2000_db2010(port, phone);
+	/* execute action */
+	switch (act) {
+	case ACT_IDENTIFY:
+		if (emp_avr_action_identify(port, phone) != 0)
+			return -1;
+		break;
 
-    case DB2020:
-    case PNX5230:
-        return unlock_usercode_db2020_pnx5230(port, phone);
+		// case ACT_FLASH_AVR:
+		//     if (emp_avr_action_flash_sbn(port, phone, args->flash_avr_fw) != 0)
+		//         return -1;
+		//     break;
 
-    default:
-        return -1;
-    }
+	case ACT_NONE:
+	default:
+		fprintf(stderr, "Error: unknown or unsupported action '%s'\n", args->action ? args->action : "(null)");
+		return -1;
+	}
+	return 0;
 }
 
-int dump_sec_units_pnx(struct sp_port *port, const char *backup_name)
+// pre A1 devices
+int action_emp_v2(struct sp_port *port, struct phone_info *phone, action_t act, cli_args *args)
 {
-    FILE *f = fopen(backup_name, "a");
-    if (!f)
-    {
-        fprintf(stderr, "Cannot create %s\n", backup_name);
-        return -1;
-    }
+	/* execute action */
+	switch (act) {
+	case ACT_IDENTIFY:
+		if (action_rtz_identify(port, phone) != 0)
+			return -1;
+		break;
 
-    uint8_t resp[0x800];
-    int len;
+	case ACT_FLASH_ARM:
+		if (action_rtz_flash_arm(port, phone, args->flash_arm_fw) != 0)
+			return -1;
+		break;
 
-    /* list of blocks to dump (block, msb, lsb, skip_first) */
-    struct
-    {
-        uint8_t block;
-        uint8_t msb;
-        uint8_t lsb;
-    } blocks[] = {
-        {0x00, 0x00, 0x06}, /* GD_COPS_Dynamic1Variable */
-        {0x00, 0x00, 0x0E}, /* GD_COPS_Dynamic2Variable */
-        {0x00, 0x00, 0x13}, /* GD_COPS_StaticVariable */
-        {0x00, 0x00, 0x18}, /* GD_COPS_ProtectedCustomerSettings */
-        {0x00, 0x00, 0xAA}, /* GD_Protected_PlatformSettings */
-        {0x01, 0x08, 0x51}  /* block 0x01 unit 0x0851 */
-    };
+	case ACT_FLASH_AVR:
+		if (action_rtz_flash_avr(port, phone, args->flash_avr_fw) != 0)
+			return -1;
+		break;
 
-    for (size_t i = 0; i < sizeof(blocks) / sizeof(blocks[0]); ++i)
-    {
-        len = loader_send_packet_pnx(port, blocks[i].block, blocks[i].msb, blocks[i].lsb,
-                                     resp, sizeof(resp));
-        if (len < 0)
-        {
-            fclose(f);
-            return -1;
-        }
+	case ACT_READ_AVR:
+		if (action_rtz_read_avr(port, phone, args->dump_addr, args->dump_size) != 0)
+			return -1;
+		break;
 
-        fprintf(f, "gdfswrite:%04X%02X%02X",
-                blocks[i].block, blocks[i].msb, blocks[i].lsb);
+	case ACT_UNLOCK_AVR:
+		if (action_rtz_unlock_usercode(port, phone, args->avr_device_name) != 0)
+			return -1;
+		break;
 
-        for (int j = 0; j < len; ++j)
-            fprintf(f, "%02X", resp[j]);
-
-        fprintf(f, "\n");
-    }
-
-    fclose(f);
-    printf("SECURITY UNITS BACKUP CREATED. %s\n", backup_name);
-    return 0;
+	case ACT_NONE:
+	default:
+		fprintf(stderr, "Error: unknown or unsupported action '%s'\n", args->action ? args->action : "(null)");
+		return -1;
+	}
+	return 0;
 }
 
-int action_identify_pnx(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs)
+// A1 devices
+int action_emp_v3(struct sp_port *port, struct phone_info *phone, action_t act, cli_args *args)
 {
-    printf("Phone Info (from GDFS):\n");
+	/* execute action */
+	switch (act) {
+	case ACT_IDENTIFY:
+		if (action_identify(port, phone) != 0)
+			return -1;
+		break;
 
-    // Phone name
-    uint8_t resp[0x800];
-    int len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xBB, resp, sizeof(resp));
-    if (len < 0)
-        return -1;
-    wcstombs(gdfs->phone_name, (wchar_t *)resp, len);
-    printf("Model: %s\n", gdfs->phone_name);
+	case ACT_UNLOCK:
+		if (strcmp(args->unlock_target, "usercode") == 0) {
+			phone->gdfs_server = 1;
+			if (action_unlock_usercode(port, phone) != 0)
+				return -1;
+		} else if (strcmp(args->unlock_target, "simlock") == 0) {
+			// if (action_unlock_simlock(port, phone) != 0)
+			//     return -1;
+			printf("Not implemented (yet)\n");
+		}
+		break;
 
-    // Brand
-    len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xE5, resp, sizeof(resp));
-    if (len < 0)
-        return -1;
-    strncpy(gdfs->brand, (char *)resp, len);
-    gdfs->brand[len] = '\0';
-    printf("Brand: %s\n", gdfs->brand);
+	case ACT_FLASH:
+		phone->break_rsa = args->break_rsa;
+		if (phone->break_rsa)
+			phone->need_rest = 0;
+		if (action_flash_fw(port, phone, args->flash_mainfw, args->flash_fsfw, args->flash_cda) != 0)
+			return -1;
+		break;
 
-    // CXC article
-    len = loader_send_packet_pnx(port, 0x02, 0x0E, 0x15, resp, sizeof(resp));
-    if (len < 0)
-        return -1;
-    strncpy(gdfs->cxc_article, (char *)resp, len);
-    gdfs->cxc_article[len] = '\0';
-    printf("MAPP CXC article: %s\n", gdfs->cxc_article);
-    parse_cxc_article_to_anycid_pkg(phone, gdfs->cxc_article);
-    parse_cxc_article_to_rest_name(phone, gdfs->cxc_article);
+	case ACT_READ_FLASH:
+		phone->anycid = args->anycid;
+		phone->break_rsa = args->break_rsa;
+		phone->need_rest = 1;
+		phone->save_as_babe = args->save_as_babe;
+		if (action_read_flash(port, phone, args->dump_addr, args->dump_size) != 0)
+			return -1;
+		break;
 
-    // CXC version
-    len = loader_send_packet_pnx(port, 0x02, 0x0E, 0x16, resp, sizeof(resp));
-    if (len < 0)
-        return -1;
-    strncpy(gdfs->cxc_version, (char *)resp, len);
-    gdfs->cxc_version[len] = '\0';
-    printf("MAPP CXC version: %s\n", gdfs->cxc_version);
+	case ACT_READ_GDFS:
+		phone->gdfs_server = 1;
+		if (action_backup_gdfs(port, phone) != 0)
+			return -1;
+		break;
 
-    // Language package
-    len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xE7, resp, sizeof(resp));
-    if (len < 0)
-        return -1;
-    strncpy(gdfs->langpack, (char *)resp, len);
-    gdfs->langpack[len] = '\0';
-    printf("Language package: %s\n", gdfs->langpack);
+	case ACT_WRITE_GDFS:
+		phone->gdfs_server = 1;
+		if (action_restore_gdfs(port, phone, args->gdfs_filename) != 0)
+			return -1;
+		break;
 
-    // CDA article
-    len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xE8, resp, sizeof(resp));
-    if (len < 0)
-        return -1;
-    strncpy(gdfs->cda_article, (char *)resp, len);
-    gdfs->cda_article[len] = '\0';
-    printf("CDA article: %s\n", gdfs->cda_article);
+	case ACT_WRITE_SCRIPT:
+		phone->gdfs_server = 1;
+		phone->anycid = args->anycid;
+		phone->break_rsa = args->break_rsa;
+		phone->need_rest = 1;
+		if (action_exec_scripts(port, phone, args->script_count, args->script_filenames) != 0)
+			return -1;
+		break;
 
-    // CDA revision
-    len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xE9, resp, sizeof(resp));
-    if (len < 0)
-        return -1;
-    strncpy(gdfs->cda_revision, (char *)resp, len);
-    gdfs->cda_article[len] = '\0';
-    printf("CDA revision: %s\n", gdfs->cda_revision);
+	case ACT_UPLOAD_FS:
+		if (action_upload_to_fs(port, phone, args->src_list, args->upload_count,
+		                        args->dest_path ? args->dest_path : "/") != 0)
+			return -1;
+		break;
 
-    // Default article
-    len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xEA, resp, sizeof(resp));
-    if (len < 0)
-        return -1;
-    strncpy(gdfs->default_article, (char *)resp, len);
-    gdfs->default_article[len] = '\0';
-    printf("Default article: %s\n", gdfs->default_article);
+	case ACT_DOWNLOAD_FS:
+		phone->gdfs_server = 1;
+		phone->anycid = args->anycid;
+		phone->break_rsa = args->break_rsa;
+		phone->need_rest = 1;
+		if (action_download_from_fs(port, phone, args->src_path, args->dest_path) != 0)
+			return -1;
+		break;
 
-    // Default version
-    len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xEB, resp, sizeof(resp));
-    if (len < 0)
-        return -1;
-    strncpy(gdfs->default_version, (char *)resp, len);
-    gdfs->default_version[len] = '\0';
-    printf("Default version: %s\n", gdfs->default_version);
+	case ACT_UPLOAD_ANYCID:
+		if (action_upload_anycid(port, phone) != 0)
+			return -1;
+		break;
 
-    // SIMLOCK (binary data)
-    len = loader_send_packet_pnx(port, 0x00, 0x00, 0x06, resp, sizeof(resp));
-    if (len < 0)
-        return -1;
-    gdfs_parse_simlockdata(gdfs, resp);
-    printf("%s\n", gdfs->locked ? "LOCKED" : "SIMLOCKS NOT DETECTED");
-    printf("Provider: %s-%s\n\n", gdfs->mcc, gdfs->mnc);
+	case ACT_NONE:
+	default:
+		fprintf(stderr, "Error: unknown or unsupported action '%s'\n", args->action ? args->action : "(null)");
+		return -1;
+	}
 
-    char backup_path[512];
-    snprintf(backup_path, sizeof(backup_path), "./backup/secunits_%s_%s.txt", gdfs->phone_name, phone->otp_imei);
-    if (access(backup_path, 0) != 0)
-    {
-        dump_sec_units_pnx(port, backup_path);
-    }
+	if (loader_shutdown(port) != 0)
+		return -1;
 
-    if (check_restore_file(phone))
-        printf("Restore firmware: ./rest/%s.rest\n", phone->rest_name);
-    else
-        printf("Restore firmware not found\n");
-
-    if (check_anycid_pkg(phone))
-        printf("Anycid package: ./anycid/%s.zip\n\n", phone->anycid_target);
-
-    return 0;
+	return 0;
 }
 
-int action_identify(struct sp_port *port, struct phone_info *phone)
+void action_print_summary(action_t act, const cli_args *args)
 {
-    struct gdfs_data_t gdfs = {0};
-
-    if (phone->chip_id == PNX5230)
-        return action_identify_pnx(port, phone, &gdfs);
-
-    if (loader_enter_flashmode(port, phone) != 0)
-        return -1;
-
-    if (loader_activate_gdfs(port) != 0)
-        return -1;
-
-    printf("\nPhone Info (from GDFS):\n");
-
-    gdfs_get_phonename(port, phone, &gdfs);
-    printf("Model: %s\n", gdfs.phone_name);
-
-    gdfs_get_brand(port, phone, &gdfs);
-    printf("Brand: %s\n", gdfs.brand);
-
-    if (phone->chip_id > DB2010_1)
-    {
-        gdfs_get_cxc_article(port, phone, &gdfs);
-        printf("MAPP CXC article: %s\n", gdfs.cxc_article);
-        parse_cxc_article_to_anycid_pkg(phone, gdfs.cxc_article);
-        parse_cxc_article_to_rest_name(phone, gdfs.cxc_article);
-
-        gdfs_get_cxc_version(port, phone, &gdfs);
-        printf("MAPP CXC version: %s\n", gdfs.cxc_version);
-    }
-
-    gdfs_get_language(port, phone, &gdfs);
-    printf("Language Package: %s\n", gdfs.langpack);
-
-    gdfs_get_cda_article(port, phone, &gdfs);
-    printf("CDA article: %s\n", gdfs.cda_article);
-
-    gdfs_get_cda_revision(port, phone, &gdfs);
-    printf("CDA revision: %s\n", gdfs.cda_revision);
-
-    gdfs_get_default_article(port, phone, &gdfs);
-    printf("Default article: %s\n", gdfs.default_article);
-
-    gdfs_get_default_version(port, phone, &gdfs);
-    printf("Default version: %s\n", gdfs.default_version);
-
-    gdfs_get_simlock(port, &gdfs);
-    printf("%s\n", gdfs.locked ? "LOCKED" : "SIMLOCKS NOT DETECTED");
-    printf("Provider: %s-%s\n\n", gdfs.mcc, gdfs.mnc);
-
-    if (phone->chip_id != DB2020)
-    {
-        gdfs_get_userlock(port, &gdfs);
-        printf("User code: %s\n\n", gdfs.user_lock);
-    }
-
-    char backup_path[512];
-    snprintf(backup_path, sizeof(backup_path), "./backup/secunits_%s.txt", phone->otp_imei);
-    if (access(backup_path, 0) != 0)
-    {
-        gdfs_dump_sec_units(port, phone, backup_path);
-    }
-
-    if (phone->chip_id > DB2010_1 && phone->erom_cid >= 49)
-    {
-        if (check_restore_file(phone))
-            printf("Restore firmware: ./rest/%s.rest\n", phone->rest_name);
-        else
-            printf("Restore firmware not found\n");
-
-        if (check_anycid_pkg(phone))
-            printf("Anycid package: ./anycid/%s.zip\n\n", phone->anycid_target);
-    }
-
-    return 0;
-}
-
-int action_upload_anycid(struct sp_port *port, struct phone_info *phone)
-{
-    if (phone->chip_id == DB2000)
-    {
-        printf("No anycid exploit for DB2000 phone\n");
-        return 0;
-    }
-    if (phone->erom_color == BROWN)
-    {
-        printf("No need to use anycid exploit for BROWN phone\n");
-        return 0;
-    }
-    if ((phone->chip_id == DB2010_1 || phone->chip_id == DB2010_2) &&
-        phone->erom_cid <= 49)
-    {
-        printf("No need to use anycid exploit for DB2010 CID49 RED and lower phone\n");
-        return 0;
-    }
-
-    phone->gdfs_server = 1;
-
-    if (loader_send_ofs_ldr(port, phone) != 0)
-        return -1;
-    if (csloader_start_fsx_server(port) != 0)
-        return -1;
-    if (csloader_change_directory(port, "/") != 0)
-        return -1;
-
-    char anycid_pkg[256];
-    snprintf(anycid_pkg, sizeof(anycid_pkg), "./anycid/%s.zip", phone->anycid_target);
-
-    if (file_exists(anycid_pkg))
-    {
-        printf("-> Uploading package: %s\n", anycid_pkg);
-
-        char platform_pkg[256];
-        if (phone->chip_id == DB2020 || phone->chip_id == PNX5230)
-        {
-            snprintf(platform_pkg, sizeof(platform_pkg), "./anycid/%s.zip", get_chipset_name(phone->chip_id));
-
-            if (csloader_upload_zip(port, platform_pkg) != 0)
-            {
-                fprintf(stderr, "Error uploading pkg: %s\n", platform_pkg);
-                csloader_shutdown_fsx_server(port);
-                return -1;
-            }
-        }
-
-        if (csloader_upload_zip(port, anycid_pkg) != 0)
-        {
-            fprintf(stderr, "Error uploading pkg: %s\n", anycid_pkg);
-            csloader_shutdown_fsx_server(port);
-            return -1;
-        }
-
-        printf("Turn on the phone with simcard installed\n"
-               "executer will be installed on Games folder\n\n");
-    }
-
-    if (csloader_shutdown_fsx_server(port) != 0)
-        return -1;
-
-    return 0;
-}
-
-int action_upload_to_fs(struct sp_port *port, struct phone_info *phone,
-                        const char **src_files, int src_count, const char *dst_dir)
-{
-    phone->gdfs_server = 1;
-
-    if (loader_send_ofs_ldr(port, phone) != 0)
-        return -1;
-    if (csloader_start_fsx_server(port) != 0)
-        return -1;
-    if (csloader_change_directory(port, dst_dir) != 0)
-        return -1;
-
-    for (int i = 0; i < src_count; i++)
-    {
-        const char *src_name = src_files[i];
-
-        if (!file_exists(src_name))
-        {
-            fprintf(stderr, "Warning: %s not found, skipping\n", src_name);
-            continue;
-        }
-
-        printf("=== %s (%d/%d) ===\n", src_name, i + 1, src_count);
-
-        if (is_directory(src_name))
-        {
-            printf("-> Uploading directory:\n");
-            if (csloader_write_directory(port, src_name, "", dst_dir) != 0)
-            {
-                fprintf(stderr, "Error uploading directory: %s\n", src_name);
-                csloader_shutdown_fsx_server(port);
-                return -1;
-            }
-        }
-        else if (ends_with(src_name, ".zip"))
-        {
-            printf("-> Uploading zip:\n");
-            if (csloader_upload_zip(port, src_name) != 0)
-            {
-                fprintf(stderr, "Error uploading zip: %s\n", src_name);
-                csloader_shutdown_fsx_server(port);
-                return -1;
-            }
-        }
-        else
-        {
-            const char *basename = strrchr(src_name, '/');
-            if (!basename)
-                basename = strrchr(src_name, '\\');
-            basename = basename ? basename + 1 : src_name;
-
-            char target_path[512];
-            snprintf(target_path, sizeof(target_path), "%s/%s", dst_dir, basename);
-            normalize_path(target_path);
-
-            size_t filesize = 0;
-            uint8_t *filebuff = load_file(src_name, &filesize);
-            if (!filebuff)
-            {
-                fprintf(stderr, "Failed to read %s\n", src_name);
-                csloader_shutdown_fsx_server(port);
-                return -1;
-            }
-
-            if (filesize == 0)
-                csloader_delete_file(port, target_path);
-            else
-            {
-                if (csloader_put_file(port, target_path, filesize, filebuff) != 0)
-                {
-                    fprintf(stderr, "Error copying file: %s\n", src_name);
-                    free(filebuff);
-                    csloader_shutdown_fsx_server(port);
-                    return -1;
-                }
-            }
-
-            free(filebuff);
-        }
-    }
-
-    if (csloader_shutdown_fsx_server(port) != 0)
-        return -1;
-
-    printf("\nAll uploads complete.\n");
-    return 0;
-}
-
-int action_download_from_fs(struct sp_port *port, struct phone_info *phone,
-                            const char *src_path,
-                            const char *dest_dir)
-{
-    phone->gdfs_server = 1;
-
-    ose_stat_t st;
-
-    if (loader_send_bfs_ldr(port, phone) != 0)
-        return -1;
-    if (csloader_start_fsx_server(port) != 0)
-        return -1;
-    if (csloader_change_directory(port, "/") != 0)
-        return -1;
-
-    int result = -1;
-
-    // --- Special case: root path is always a directory ---
-    if (strcmp(src_path, "/") == 0)
-    {
-        printf("Source is root directory\n");
-        result = csloader_read_directory(port, "/", dest_dir);
-        goto done;
-    }
-
-    // --- Query file info ---
-    if (csloader_stat(port, src_path, &st) != 0)
-    {
-        printf("Error: cannot stat '%s'\n", src_path);
-        goto done;
-    }
-
-    // --- Directory or file ---
-    if (st.st_mode & OSEATTR_DIRECTORY)
-    {
-        printf("'%s' is a directory\n", src_path);
-        result = csloader_read_directory(port, src_path, dest_dir);
-    }
-    else
-    {
-        printf("'%s' is a file\n", src_path);
-        const char *fname = strrchr(src_path, '/');
-        if (!fname)
-            fname = src_path;
-        else
-            fname++;
-
-        char dest_path[512];
-        snprintf(dest_path, sizeof(dest_path), "%s/%s", dest_dir, fname);
-
-        result = csloader_get_file(port, dest_path, src_path);
-    }
-
-done:
-    csloader_shutdown_fsx_server(port);
-
-    if (result == 0)
-        printf("\nDownload complete: %s\n", src_path ? src_path : "/");
-    else
-        printf("\nDownload failed: %s\n", src_path ? src_path : "/");
-
-    if (phone->chip_id == DB2000 && phone->break_rsa)
-    {
-        result = bflash_repair_boot(port, phone);
-    }
-
-    return result;
-}
-
-int action_flash_fw(struct sp_port *port, struct phone_info *phone,
-                    const char *main_fw,
-                    const char *fs_fw,
-                    const char *cda)
-{
-    int fw_flashed = 0;
-    int use_bflash = 0;
-
-    if ((phone->chip_id == DB2000 || phone->chip_id == DB2010_1 || phone->chip_id == DB2010_2) &&
-        phone->erom_cid <= 49 &&
-        phone->break_rsa == 1)
-    {
-        use_bflash = 1;
-    }
-
-    if (phone->erom_color == BROWN)
-        use_bflash = 1;
-
-    if (main_fw || fs_fw)
-    {
-        int fw_chk = CHECKBABE_CHECKFULL;
-        if (use_bflash)
-        {
-            printf("BFLASH\n");
-            if (loader_send_bflash_ldr(port, phone) != 0)
-                return -1;
-            fw_chk = CHECKBABE_CHECKFAST;
-        }
-        else
-        {
-            printf("OFLASH\n");
-            if (loader_send_oflash_ldr(port, phone) != 0)
-                return -1;
-
-            if (phone->erom_cid <= 36 || phone->erom_color == BROWN)
-                fw_chk = CHECKBABE_CHECKFAST;
-        }
-
-        if (main_fw)
-        {
-            if (flash_babe_fw(port, main_fw, fw_chk) != 0)
-                return -1;
-
-            fw_flashed++;
-        }
-
-        if (fs_fw)
-        {
-            if (flash_babe_fw(port, fs_fw, fw_chk) != 0)
-                return -1;
-
-            fw_flashed++;
-        }
-    }
-
-    if (cda)
-    {
-        printf("\n");
-
-        // Restart device before upload CDA package
-        if (fw_flashed && (phone->chip_id != DB2020 || phone->chip_id != PNX5230))
-        {
-            if (loader_shutdown(port) != 0)
-                return -1;
-
-            struct timespec ts = {0, 2000000}; // 20 ms sleep
-            nanosleep(&ts, NULL);
-            connection_close(port);
-            nanosleep(&ts, NULL);
-
-            printf("\n\nRestarting\n\n");
-
-            /* reopen & handshake */
-            if (connection_open(port, phone) != 0)
-            {
-                fprintf(stderr, "reconnect failed\n");
-                return -1;
-            }
-        }
-
-        const char *src_list[] = {cda};
-        if (action_upload_to_fs(port, phone, src_list, 1, "/") != 0)
-            return -1;
-    }
-
-    return 0;
-}
-
-int action_read_flash(struct sp_port *port, struct phone_info *phone, uint32_t addr, uint32_t size)
-{
-    if (loader_send_bflash_ldr(port, phone) != 0)
-        return -1;
-
-    if (flash_read(port, phone, addr, size) != 0)
-        return -1;
-
-    return 0;
-}
-
-int action_restore_gdfs(struct sp_port *port, struct phone_info *phone, const char *inputfname)
-{
-    if (loader_send_ofs_ldr(port, phone) != 0)
-        return -1;
-
-    if (csloader_write_gdfs(port, inputfname) != 0)
-        return -1;
-
-    if (gdfs_terminate_access(port) != 0)
-        return -1;
-
-    return 0;
-}
-
-int action_backup_gdfs(struct sp_port *port, struct phone_info *phone)
-{
-    if (loader_send_ofs_ldr(port, phone) != 0)
-        return -1;
-
-    if (csloader_read_gdfs(port, phone) != 0)
-        return -1;
-
-    if (gdfs_terminate_access(port) != 0)
-        return -1;
-
-    return 0;
-}
-
-int action_exec_scripts(struct sp_port *port, struct phone_info *phone,
-                        int nfiles, const char **filenames)
-{
-    int rc = 0;
-    int has_vkp = 0;
-    int has_txt = 0;
-
-    // First pass: detect what we got
-    for (int i = 0; i < nfiles; i++)
-    {
-        const char *ext = strrchr(filenames[i], '.');
-        if (ext && strcasecmp(ext, ".vkp") == 0)
-            has_vkp = 1;
-        else
-            has_txt = 1;
-    }
-
-    if (has_vkp && has_txt)
-    {
-        fprintf(stderr, "Error: cannot mix VKP patches and GDFS scripts in one run.\n");
-        return 0;
-    }
-
-    if (has_vkp)
-    {
-        // --- Prepare bflash loader once ---
-        if (loader_send_bflash_ldr(port, phone) != 0)
-            return -1;
-
-        int patched_count = 0;
-        int skipped_count = 0;
-
-        // --- Loop over VKP patches ---
-        for (int i = 0; i < nfiles; i++)
-        {
-            printf("\n=== Patching %d/%d ===\n", i + 1, nfiles);
-
-            const char *fname = filenames[i];
-            vkp_patch_t patch;
-            vkp_patch_init(&patch);
-
-            if (vkp_load_file(fname, &patch) != 0)
-            {
-                fprintf(stderr, "Failed to parse VKP file: %s\n", fname);
-                vkp_patch_free(&patch);
-                rc = -1;
-                continue; // try next patch
-            }
-
-            printf("\n%s parsed successfully, %zu byte(s)\n",
-                   fname, patch.patch.count);
-
-            int vkp_rc = flash_vkp(port, fname, &patch, 0, phone->flashblocksize);
-            if (vkp_rc == FLASH_VKP_SKIP)
-            {
-                skipped_count++;
-                vkp_patch_free(&patch);
-                continue; // keep processing others
-            }
-            if (vkp_rc == FLASH_VKP_ERR)
-            {
-                vkp_patch_free(&patch);
-                rc = -1;
-                break;
-            }
-            patched_count++;
-            vkp_patch_free(&patch);
-        }
-
-        printf("\nSummary: %d patched, %d skipped\n\n", patched_count, skipped_count);
-        return rc;
-    }
-
-    // --- CSLOADER once ---
-    if (loader_send_ofs_ldr(port, phone) != 0)
-        return -1;
-
-    for (int i = 0; i < nfiles; i++)
-    {
-        const char *fname = filenames[i];
-        printf("\n=== %s (%d/%d) ===\n", fname, i + 1, nfiles);
-
-        char script_name[512];
-        snprintf(script_name, sizeof(script_name),
-                 "./script_%s_%s.txt", phone->phone_name, phone->otp_imei);
-
-        if (csloader_parse_gdfs_script(port, fname, script_name) != 0)
-        {
-            rc = -1;
-            break;
-        }
-    }
-
-    if (rc == 0)
-    {
-        if (gdfs_terminate_access(port) != 0)
-            rc = -1;
-    }
-
-    return rc;
-}
-
-int action_convert(const char *cnv_mode, const char *cnv_filename, uint32_t mem_addr)
-{
-    char outname[256];
-
-    if (strcmp(cnv_mode, "raw2babe") == 0)
-    {
-        snprintf(outname, sizeof(outname), "%s.ssw", cnv_filename);
-        if (flash_cnv_raw_to_babe_file(cnv_filename, outname, mem_addr) != 0)
-        {
-            fprintf(stderr, "Error: failed to convert raw to babe\n");
-            return -1;
-        }
-    }
-    else if (strcmp(cnv_mode, "babe2raw") == 0)
-    {
-        snprintf(outname, sizeof(outname), "%s.bin", cnv_filename);
-        if (flash_cnv_babe_to_raw_file(cnv_filename, outname) != 0)
-        {
-            fprintf(stderr, "Error: failed to convert babe to raw\n");
-            return -1;
-        }
-    }
-
-    return 0;
+	printf("Port: %s\n", args->port_name ? args->port_name : "(none)");
+	printf("Baudrate: %d\n", args->baudrate);
+	printf("Action: %s ", args->action ? args->action : "(none)");
+
+	switch (act) {
+	case ACT_FLASH:
+		printf("\n");
+		if (args->flash_mainfw)
+			printf("Main: %s\n", args->flash_mainfw);
+		if (args->flash_fsfw)
+			printf("FS: %s\n", args->flash_fsfw);
+		if (args->flash_cda)
+			printf("CDA: %s\n", args->flash_cda);
+		break;
+
+	case ACT_READ_FLASH:
+		if (args->dump_size % BLOCK_SIZE != 0) {
+			uint32_t aligned_size = (args->dump_size + BLOCK_SIZE - 1) & ~(BLOCK_SIZE - 1);
+			printf("\nsize 0x%X adjusted to aligned size 0x%X\n", args->dump_size, aligned_size);
+		}
+		printf("addr: 0x%X, size: 0x%X (%u) bytes\n", args->dump_addr, args->dump_size, args->dump_size);
+		if (args->save_as_babe)
+			printf("Output saved as BABE format\n");
+		break;
+
+	case ACT_UNLOCK:
+		printf("%s\n", args->unlock_target);
+		break;
+
+	case ACT_WRITE_GDFS:
+		printf("%s\n", args->gdfs_filename);
+		break;
+
+	case ACT_WRITE_SCRIPT:
+		printf("\n");
+		for (int i = 0; i < args->script_count; i++)
+			printf("[*] %s\n", args->script_filenames[i]);
+		printf("\n");
+		break;
+
+	case ACT_UPLOAD_FS:
+		printf("\nSource(s):\n");
+		for (int i = 0; i < args->upload_count; i++)
+			printf("[*] %s\n", args->src_list[i]);
+		if (args->dest_path)
+			printf("Destination: %s\n", args->dest_path);
+		else
+			printf("Destination: ROOT\n");
+		break;
+
+	case ACT_DOWNLOAD_FS:
+		printf("\nSource: %s\n", args->src_path);
+		printf("Destination: %s\n", args->dest_path);
+		break;
+
+	case ACT_FLASH_ARM:
+		printf("\n");
+		if (args->flash_arm_fw)
+			printf("ARM: %s\n", args->flash_arm_fw);
+		break;
+
+	case ACT_FLASH_AVR:
+		printf("\n");
+		if (args->flash_avr_fw)
+			printf("AVR: %s\n", args->flash_avr_fw);
+		break;
+
+	default:
+		printf("\n");
+		break;
+	}
+
+	printf("\n");
 }

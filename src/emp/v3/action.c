@@ -1,0 +1,712 @@
+#include <libserialport.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifdef _WIN32
+#include <io.h>
+#define access _access
+#else
+#include <unistd.h>
+#endif
+
+#include <core/common.h>
+#include <core/connection.h>
+#include <core/serial.h>
+#include <emp/common/cmd.h>
+#include <utils/vkp.h>
+
+#include "babe.h"
+#include "csloader.h"
+#include "flash.h"
+#include "gdfs.h"
+#include "loader.h"
+
+int unlock_usercode_db2020_pnx5230(struct sp_port *port, struct phone_info *phone)
+{
+	if (loader_send_ofs_ldr(port, phone) != 0)
+		return -1;
+
+	if (gdfs_unlock_usercode(port) != 0)
+		return -1;
+
+	if (gdfs_terminate_access(port) != 0)
+		return -1;
+
+	return 0;
+}
+
+int unlock_usercode_db2000_db2010(struct sp_port *port, struct phone_info *phone)
+{
+	if (loader_enter_flashmode(port, phone) != 0)
+		return -1;
+
+	if (loader_activate_gdfs(port) != 0)
+		return -1;
+
+	struct gdfs_data_t gdfs = {0};
+	gdfs_get_userlock(port, &gdfs);
+	printf("\nUser code: %s\n\n", gdfs.user_lock);
+
+	return 0;
+}
+
+int action_unlock_usercode(struct sp_port *port, struct phone_info *phone)
+{
+	switch (phone->chip_id) {
+	case DB2000:
+	case DB2010_1:
+	case DB2010_2:
+		return unlock_usercode_db2000_db2010(port, phone);
+
+	case DB2020:
+	case PNX5230:
+		return unlock_usercode_db2020_pnx5230(port, phone);
+
+	default:
+		return -1;
+	}
+}
+
+int dump_sec_units_pnx(struct sp_port *port, const char *backup_name)
+{
+	FILE *f = fopen(backup_name, "a");
+	if (!f) {
+		fprintf(stderr, "Cannot create %s\n", backup_name);
+		return -1;
+	}
+
+	uint8_t resp[0x800];
+	int len;
+
+	/* list of blocks to dump (block, msb, lsb, skip_first) */
+	struct {
+		uint8_t block;
+		uint8_t msb;
+		uint8_t lsb;
+	} blocks[] = {
+	        {0x00, 0x00, 0x06}, /* GD_COPS_Dynamic1Variable */
+	        {0x00, 0x00, 0x0E}, /* GD_COPS_Dynamic2Variable */
+	        {0x00, 0x00, 0x13}, /* GD_COPS_StaticVariable */
+	        {0x00, 0x00, 0x18}, /* GD_COPS_ProtectedCustomerSettings */
+	        {0x00, 0x00, 0xAA}, /* GD_Protected_PlatformSettings */
+	        {0x01, 0x08, 0x51} /* block 0x01 unit 0x0851 */
+	};
+
+	for (size_t i = 0; i < sizeof(blocks) / sizeof(blocks[0]); ++i) {
+		len = loader_send_packet_pnx(port, blocks[i].block, blocks[i].msb, blocks[i].lsb, resp, sizeof(resp));
+		if (len < 0) {
+			fclose(f);
+			return -1;
+		}
+
+		fprintf(f, "gdfswrite:%04X%02X%02X", blocks[i].block, blocks[i].msb, blocks[i].lsb);
+
+		for (int j = 0; j < len; ++j)
+			fprintf(f, "%02X", resp[j]);
+
+		fprintf(f, "\n");
+	}
+
+	fclose(f);
+	printf("SECURITY UNITS BACKUP CREATED. %s\n", backup_name);
+	return 0;
+}
+
+int action_identify_pnx(struct sp_port *port, struct phone_info *phone, struct gdfs_data_t *gdfs)
+{
+	printf("Phone Info (from GDFS):\n");
+
+	// Phone name
+	uint8_t resp[0x800];
+	int len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xBB, resp, sizeof(resp));
+	if (len < 0)
+		return -1;
+	wcstombs(gdfs->phone_name, (wchar_t *)resp, len);
+	printf("Model: %s\n", gdfs->phone_name);
+
+	// Brand
+	len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xE5, resp, sizeof(resp));
+	if (len < 0)
+		return -1;
+	strncpy(gdfs->brand, (char *)resp, len);
+	gdfs->brand[len] = '\0';
+	printf("Brand: %s\n", gdfs->brand);
+
+	// CXC article
+	len = loader_send_packet_pnx(port, 0x02, 0x0E, 0x15, resp, sizeof(resp));
+	if (len < 0)
+		return -1;
+	strncpy(gdfs->cxc_article, (char *)resp, len);
+	gdfs->cxc_article[len] = '\0';
+	printf("MAPP CXC article: %s\n", gdfs->cxc_article);
+	parse_cxc_article_to_anycid_pkg(phone, gdfs->cxc_article);
+	parse_cxc_article_to_rest_name(phone, gdfs->cxc_article);
+
+	// CXC version
+	len = loader_send_packet_pnx(port, 0x02, 0x0E, 0x16, resp, sizeof(resp));
+	if (len < 0)
+		return -1;
+	strncpy(gdfs->cxc_version, (char *)resp, len);
+	gdfs->cxc_version[len] = '\0';
+	printf("MAPP CXC version: %s\n", gdfs->cxc_version);
+
+	// Language package
+	len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xE7, resp, sizeof(resp));
+	if (len < 0)
+		return -1;
+	strncpy(gdfs->langpack, (char *)resp, len);
+	gdfs->langpack[len] = '\0';
+	printf("Language package: %s\n", gdfs->langpack);
+
+	// CDA article
+	len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xE8, resp, sizeof(resp));
+	if (len < 0)
+		return -1;
+	strncpy(gdfs->cda_article, (char *)resp, len);
+	gdfs->cda_article[len] = '\0';
+	printf("CDA article: %s\n", gdfs->cda_article);
+
+	// CDA revision
+	len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xE9, resp, sizeof(resp));
+	if (len < 0)
+		return -1;
+	strncpy(gdfs->cda_revision, (char *)resp, len);
+	gdfs->cda_article[len] = '\0';
+	printf("CDA revision: %s\n", gdfs->cda_revision);
+
+	// Default article
+	len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xEA, resp, sizeof(resp));
+	if (len < 0)
+		return -1;
+	strncpy(gdfs->default_article, (char *)resp, len);
+	gdfs->default_article[len] = '\0';
+	printf("Default article: %s\n", gdfs->default_article);
+
+	// Default version
+	len = loader_send_packet_pnx(port, 0x02, 0x0D, 0xEB, resp, sizeof(resp));
+	if (len < 0)
+		return -1;
+	strncpy(gdfs->default_version, (char *)resp, len);
+	gdfs->default_version[len] = '\0';
+	printf("Default version: %s\n", gdfs->default_version);
+
+	// SIMLOCK (binary data)
+	len = loader_send_packet_pnx(port, 0x00, 0x00, 0x06, resp, sizeof(resp));
+	if (len < 0)
+		return -1;
+	gdfs_parse_simlockdata(gdfs, resp);
+	printf("%s\n", gdfs->locked ? "LOCKED" : "SIMLOCKS NOT DETECTED");
+	printf("Provider: %s-%s\n\n", gdfs->mcc, gdfs->mnc);
+
+	char backup_path[512];
+	snprintf(backup_path, sizeof(backup_path), "./backup/secunits_%s_%s.txt", gdfs->phone_name, phone->otp_imei);
+	if (access(backup_path, 0) != 0) {
+		dump_sec_units_pnx(port, backup_path);
+	}
+
+	if (check_restore_file(phone))
+		printf("Restore firmware: ./rest/%s.rest\n", phone->rest_name);
+	else
+		printf("Restore firmware not found\n");
+
+	if (check_anycid_pkg(phone))
+		printf("Anycid package: ./anycid/%s.zip\n\n", phone->anycid_target);
+
+	return 0;
+}
+
+int action_identify(struct sp_port *port, struct phone_info *phone)
+{
+	struct gdfs_data_t gdfs = {0};
+
+	if (phone->chip_id == PNX5230)
+		return action_identify_pnx(port, phone, &gdfs);
+
+	if (loader_enter_flashmode(port, phone) != 0)
+		return -1;
+
+	if (loader_activate_gdfs(port) != 0)
+		return -1;
+
+	printf("\nPhone Info (from GDFS):\n");
+
+	gdfs_get_phonename(port, phone, &gdfs);
+	printf("Model: %s\n", gdfs.phone_name);
+
+	gdfs_get_brand(port, phone, &gdfs);
+	printf("Brand: %s\n", gdfs.brand);
+
+	if (phone->chip_id > DB2010_1) {
+		gdfs_get_cxc_article(port, phone, &gdfs);
+		printf("MAPP CXC article: %s\n", gdfs.cxc_article);
+		parse_cxc_article_to_anycid_pkg(phone, gdfs.cxc_article);
+		parse_cxc_article_to_rest_name(phone, gdfs.cxc_article);
+
+		gdfs_get_cxc_version(port, phone, &gdfs);
+		printf("MAPP CXC version: %s\n", gdfs.cxc_version);
+	}
+
+	gdfs_get_language(port, phone, &gdfs);
+	printf("Language Package: %s\n", gdfs.langpack);
+
+	gdfs_get_cda_article(port, phone, &gdfs);
+	printf("CDA article: %s\n", gdfs.cda_article);
+
+	gdfs_get_cda_revision(port, phone, &gdfs);
+	printf("CDA revision: %s\n", gdfs.cda_revision);
+
+	gdfs_get_default_article(port, phone, &gdfs);
+	printf("Default article: %s\n", gdfs.default_article);
+
+	gdfs_get_default_version(port, phone, &gdfs);
+	printf("Default version: %s\n", gdfs.default_version);
+
+	gdfs_get_simlock(port, &gdfs);
+	printf("%s\n", gdfs.locked ? "LOCKED" : "SIMLOCKS NOT DETECTED");
+	printf("Provider: %s-%s\n\n", gdfs.mcc, gdfs.mnc);
+
+	if (phone->chip_id != DB2020) {
+		gdfs_get_userlock(port, &gdfs);
+		printf("User code: %s\n\n", gdfs.user_lock);
+	}
+
+	char backup_path[512];
+	snprintf(backup_path, sizeof(backup_path), "./backup/secunits_%s.txt", phone->otp_imei);
+	if (access(backup_path, 0) != 0) {
+		gdfs_dump_sec_units(port, phone, backup_path);
+	}
+
+	if (phone->chip_id > DB2010_1 && phone->erom_cid >= 49) {
+		if (check_restore_file(phone))
+			printf("Restore firmware: ./rest/%s.rest\n", phone->rest_name);
+		else
+			printf("Restore firmware not found\n");
+
+		if (check_anycid_pkg(phone))
+			printf("Anycid package: ./anycid/%s.zip\n\n", phone->anycid_target);
+	}
+
+	return 0;
+}
+
+int action_upload_anycid(struct sp_port *port, struct phone_info *phone)
+{
+	if (phone->chip_id == DB2000) {
+		printf("No anycid exploit for DB2000 phone\n");
+		return 0;
+	}
+	if (phone->erom_color == BROWN) {
+		printf("No need to use anycid exploit for BROWN phone\n");
+		return 0;
+	}
+	if ((phone->chip_id == DB2010_1 || phone->chip_id == DB2010_2) && phone->erom_cid <= 49) {
+		printf("No need to use anycid exploit for DB2010 CID49 RED and "
+		       "lower phone\n");
+		return 0;
+	}
+
+	phone->gdfs_server = 1;
+
+	if (loader_send_ofs_ldr(port, phone) != 0)
+		return -1;
+	if (csloader_start_fsx_server(port) != 0)
+		return -1;
+	if (csloader_change_directory(port, "/") != 0)
+		return -1;
+
+	char anycid_pkg[256];
+	snprintf(anycid_pkg, sizeof(anycid_pkg), "./anycid/%s.zip", phone->anycid_target);
+
+	if (file_exists(anycid_pkg)) {
+		printf("-> Uploading package: %s\n", anycid_pkg);
+
+		char platform_pkg[256];
+		if (phone->chip_id == DB2020 || phone->chip_id == PNX5230) {
+			snprintf(platform_pkg, sizeof(platform_pkg), "./anycid/%s.zip",
+			         get_chipset_name(phone->chip_id));
+
+			if (csloader_upload_zip(port, platform_pkg) != 0) {
+				fprintf(stderr, "Error uploading pkg: %s\n", platform_pkg);
+				csloader_shutdown_fsx_server(port);
+				return -1;
+			}
+		}
+
+		if (csloader_upload_zip(port, anycid_pkg) != 0) {
+			fprintf(stderr, "Error uploading pkg: %s\n", anycid_pkg);
+			csloader_shutdown_fsx_server(port);
+			return -1;
+		}
+
+		printf("Turn on the phone with simcard installed\n"
+		       "executer will be installed on Games folder\n\n");
+	}
+
+	if (csloader_shutdown_fsx_server(port) != 0)
+		return -1;
+
+	return 0;
+}
+
+int action_upload_to_fs(struct sp_port *port, struct phone_info *phone, const char **src_files, int src_count,
+                        const char *dst_dir)
+{
+	phone->gdfs_server = 1;
+
+	if (loader_send_ofs_ldr(port, phone) != 0)
+		return -1;
+	if (csloader_start_fsx_server(port) != 0)
+		return -1;
+	if (csloader_change_directory(port, dst_dir) != 0)
+		return -1;
+
+	for (int i = 0; i < src_count; i++) {
+		const char *src_name = src_files[i];
+
+		if (!file_exists(src_name)) {
+			fprintf(stderr, "Warning: %s not found, skipping\n", src_name);
+			continue;
+		}
+
+		printf("=== %s (%d/%d) ===\n", src_name, i + 1, src_count);
+
+		if (is_directory(src_name)) {
+			printf("-> Uploading directory:\n");
+			if (csloader_write_directory(port, src_name, "", dst_dir) != 0) {
+				fprintf(stderr, "Error uploading directory: %s\n", src_name);
+				csloader_shutdown_fsx_server(port);
+				return -1;
+			}
+		} else if (ends_with(src_name, ".zip")) {
+			printf("-> Uploading zip:\n");
+			if (csloader_upload_zip(port, src_name) != 0) {
+				fprintf(stderr, "Error uploading zip: %s\n", src_name);
+				csloader_shutdown_fsx_server(port);
+				return -1;
+			}
+		} else {
+			const char *basename = strrchr(src_name, '/');
+			if (!basename)
+				basename = strrchr(src_name, '\\');
+			basename = basename ? basename + 1 : src_name;
+
+			char target_path[512];
+			snprintf(target_path, sizeof(target_path), "%s/%s", dst_dir, basename);
+			normalize_path(target_path);
+
+			size_t filesize = 0;
+			uint8_t *filebuff = load_file(src_name, &filesize);
+			if (!filebuff) {
+				fprintf(stderr, "Failed to read %s\n", src_name);
+				csloader_shutdown_fsx_server(port);
+				return -1;
+			}
+
+			if (filesize == 0)
+				csloader_delete_file(port, target_path);
+			else {
+				if (csloader_put_file(port, target_path, filesize, filebuff) != 0) {
+					fprintf(stderr, "Error copying file: %s\n", src_name);
+					free(filebuff);
+					csloader_shutdown_fsx_server(port);
+					return -1;
+				}
+			}
+
+			free(filebuff);
+		}
+	}
+
+	if (csloader_shutdown_fsx_server(port) != 0)
+		return -1;
+
+	printf("\nAll uploads complete.\n");
+	return 0;
+}
+
+int action_download_from_fs(struct sp_port *port, struct phone_info *phone, const char *src_path, const char *dest_dir)
+{
+	phone->gdfs_server = 1;
+
+	ose_stat_t st;
+
+	if (loader_send_bfs_ldr(port, phone) != 0)
+		return -1;
+	if (csloader_start_fsx_server(port) != 0)
+		return -1;
+	if (csloader_change_directory(port, "/") != 0)
+		return -1;
+
+	int result = -1;
+
+	// --- Special case: root path is always a directory ---
+	if (strcmp(src_path, "/") == 0) {
+		printf("Source is root directory\n");
+		result = csloader_read_directory(port, "/", dest_dir);
+		goto done;
+	}
+
+	// --- Query file info ---
+	if (csloader_stat(port, src_path, &st) != 0) {
+		printf("Error: cannot stat '%s'\n", src_path);
+		goto done;
+	}
+
+	// --- Directory or file ---
+	if (st.st_mode & OSEATTR_DIRECTORY) {
+		printf("'%s' is a directory\n", src_path);
+		result = csloader_read_directory(port, src_path, dest_dir);
+	} else {
+		printf("'%s' is a file\n", src_path);
+		const char *fname = strrchr(src_path, '/');
+		if (!fname)
+			fname = src_path;
+		else
+			fname++;
+
+		char dest_path[512];
+		snprintf(dest_path, sizeof(dest_path), "%s/%s", dest_dir, fname);
+
+		result = csloader_get_file(port, dest_path, src_path);
+	}
+
+done:
+	csloader_shutdown_fsx_server(port);
+
+	if (result == 0)
+		printf("\nDownload complete: %s\n", src_path ? src_path : "/");
+	else
+		printf("\nDownload failed: %s\n", src_path ? src_path : "/");
+
+	if (phone->chip_id == DB2000 && phone->break_rsa) {
+		result = bflash_repair_boot(port, phone);
+	}
+
+	return result;
+}
+
+int action_flash_fw(struct sp_port *port, struct phone_info *phone, const char *main_fw, const char *fs_fw,
+                    const char *cda)
+{
+	int fw_flashed = 0;
+	int use_bflash = 0;
+
+	if ((phone->chip_id == DB2000 || phone->chip_id == DB2010_1 || phone->chip_id == DB2010_2) &&
+	    phone->erom_cid <= 49 && phone->break_rsa == 1) {
+		use_bflash = 1;
+	}
+
+	if (phone->erom_color == BROWN)
+		use_bflash = 1;
+
+	if (main_fw || fs_fw) {
+		int fw_chk = CHECKBABE_CHECKFULL;
+		if (use_bflash) {
+			printf("BFLASH\n");
+			if (loader_send_bflash_ldr(port, phone) != 0)
+				return -1;
+			fw_chk = CHECKBABE_CHECKFAST;
+		} else {
+			printf("OFLASH\n");
+			if (loader_send_oflash_ldr(port, phone) != 0)
+				return -1;
+
+			if (phone->erom_cid <= 36 || phone->erom_color == BROWN)
+				fw_chk = CHECKBABE_CHECKFAST;
+		}
+
+		if (main_fw) {
+			if (flash_babe_fw(port, main_fw, fw_chk) != 0)
+				return -1;
+
+			fw_flashed++;
+		}
+
+		if (fs_fw) {
+			if (flash_babe_fw(port, fs_fw, fw_chk) != 0)
+				return -1;
+
+			fw_flashed++;
+		}
+	}
+
+	if (cda) {
+		// Restart device before upload CDA package
+		if (fw_flashed && (phone->chip_id != DB2020 && phone->chip_id != PNX5230)) {
+			printf("\n");
+
+			if (loader_shutdown(port) != 0)
+				return -1;
+
+			sleep_ms(20);
+			connection_close(port);
+			sleep_ms(20);
+
+			printf("\n\nRestarting\n\n");
+
+			/* reopen & handshake */
+			if (connection_restart(port, phone) != 0) {
+				fprintf(stderr, "reconnect failed\n");
+				return -1;
+			}
+		}
+
+		const char *src_list[] = {cda};
+		if (action_upload_to_fs(port, phone, src_list, 1, "/") != 0)
+			return -1;
+	}
+
+	return 0;
+}
+
+int action_read_flash(struct sp_port *port, struct phone_info *phone, uint32_t addr, uint32_t size)
+{
+	if (loader_send_bflash_ldr(port, phone) != 0)
+		return -1;
+
+	if (flash_read(port, phone, addr, size) != 0)
+		return -1;
+
+	return 0;
+}
+
+int action_restore_gdfs(struct sp_port *port, struct phone_info *phone, const char *inputfname)
+{
+	if (loader_send_ofs_ldr(port, phone) != 0)
+		return -1;
+
+	if (csloader_write_gdfs(port, inputfname) != 0)
+		return -1;
+
+	if (gdfs_terminate_access(port) != 0)
+		return -1;
+
+	return 0;
+}
+
+int action_backup_gdfs(struct sp_port *port, struct phone_info *phone)
+{
+	if (loader_send_ofs_ldr(port, phone) != 0)
+		return -1;
+
+	if (csloader_read_gdfs(port, phone) != 0)
+		return -1;
+
+	if (gdfs_terminate_access(port) != 0)
+		return -1;
+
+	return 0;
+}
+
+int action_exec_scripts(struct sp_port *port, struct phone_info *phone, int nfiles, const char **filenames)
+{
+	int rc = 0;
+	int has_vkp = 0;
+	int has_txt = 0;
+
+	// First pass: detect what we got
+	for (int i = 0; i < nfiles; i++) {
+		const char *ext = strrchr(filenames[i], '.');
+		if (ext && strcasecmp(ext, ".vkp") == 0)
+			has_vkp = 1;
+		else
+			has_txt = 1;
+	}
+
+	if (has_vkp && has_txt) {
+		fprintf(stderr, "Error: cannot mix VKP patches and GDFS "
+		                "scripts in one run.\n");
+		return 0;
+	}
+
+	if (has_vkp) {
+		// --- Prepare bflash loader once ---
+		if (loader_send_bflash_ldr(port, phone) != 0)
+			return -1;
+
+		int patched_count = 0;
+		int skipped_count = 0;
+
+		// --- Loop over VKP patches ---
+		for (int i = 0; i < nfiles; i++) {
+			printf("\n=== Patching %d/%d ===\n", i + 1, nfiles);
+
+			const char *fname = filenames[i];
+			vkp_patch_t patch;
+			vkp_patch_init(&patch);
+
+			if (vkp_load_file(fname, &patch) != 0) {
+				fprintf(stderr, "Failed to parse VKP file: %s\n", fname);
+				vkp_patch_free(&patch);
+				rc = -1;
+				continue; // try next patch
+			}
+
+			printf("\n%s parsed successfully, %zu byte(s)\n", fname, patch.patch.count);
+
+			int vkp_rc = flash_vkp(port, fname, &patch, 0, phone->flashblocksize);
+			if (vkp_rc == FLASH_VKP_SKIP) {
+				skipped_count++;
+				vkp_patch_free(&patch);
+				continue; // keep processing others
+			}
+			if (vkp_rc == FLASH_VKP_ERR) {
+				vkp_patch_free(&patch);
+				rc = -1;
+				break;
+			}
+			patched_count++;
+			vkp_patch_free(&patch);
+		}
+
+		printf("\nSummary: %d patched, %d skipped\n\n", patched_count, skipped_count);
+		return rc;
+	}
+
+	// --- CSLOADER once ---
+	if (loader_send_ofs_ldr(port, phone) != 0)
+		return -1;
+
+	for (int i = 0; i < nfiles; i++) {
+		const char *fname = filenames[i];
+		printf("\n=== %s (%d/%d) ===\n", fname, i + 1, nfiles);
+
+		char script_name[512];
+		snprintf(script_name, sizeof(script_name), "./script_%s_%s.txt", phone->phone_name, phone->otp_imei);
+
+		if (csloader_parse_gdfs_script(port, fname, script_name) != 0) {
+			rc = -1;
+			break;
+		}
+	}
+
+	if (rc == 0) {
+		if (gdfs_terminate_access(port) != 0)
+			rc = -1;
+	}
+
+	return rc;
+}
+
+int action_convert(const char *cnv_mode, const char *cnv_filename, uint32_t mem_addr)
+{
+	char outname[256];
+
+	if (strcmp(cnv_mode, "raw2babe") == 0) {
+		snprintf(outname, sizeof(outname), "%s.ssw", cnv_filename);
+		if (flash_cnv_raw_to_babe_file(cnv_filename, outname, mem_addr) != 0) {
+			fprintf(stderr, "Error: failed to convert raw to babe\n");
+			return -1;
+		}
+	} else if (strcmp(cnv_mode, "babe2raw") == 0) {
+		snprintf(outname, sizeof(outname), "%s.bin", cnv_filename);
+		if (flash_cnv_babe_to_raw_file(cnv_filename, outname) != 0) {
+			fprintf(stderr, "Error: failed to convert babe to raw\n");
+			return -1;
+		}
+	}
+
+	return 0;
+}
