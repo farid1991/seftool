@@ -8,18 +8,43 @@
 
 int serial_open(struct sp_port *port)
 {
-	if (sp_open(port, SP_MODE_READ_WRITE) != SP_OK)
-		return -1;
-	if (serial_set_baudrate(port, 9600) != SP_OK)
-		return -1;
-	if (sp_set_bits(port, 8) != SP_OK)
-		return -1;
-	if (sp_set_parity(port, SP_PARITY_NONE) != SP_OK)
-		return -1;
-	if (sp_set_stopbits(port, 1) != SP_OK)
-		return -1;
-	if (sp_set_flowcontrol(port, SP_FLOWCONTROL_NONE) != SP_OK)
-		return -1;
+	int r;
+
+	r = sp_open(port, SP_MODE_READ_WRITE);
+	if (r != SP_OK) {
+		fprintf(stderr, "sp_open failed: %s\n", sp_last_error_message());
+		return r;
+	}
+
+	r = serial_set_baudrate(port, 9600);
+	if (r != SP_OK) {
+		fprintf(stderr, "serial_set_baudrate failed: %s\n", sp_last_error_message());
+		return r;
+	}
+
+	r = sp_set_bits(port, 8);
+	if (r != SP_OK) {
+		fprintf(stderr, "sp_set_bits failed: %s\n", sp_last_error_message());
+		return r;
+	}
+
+	r = sp_set_parity(port, SP_PARITY_NONE);
+	if (r != SP_OK) {
+		fprintf(stderr, "sp_set_parity failed: %s\n", sp_last_error_message());
+		return r;
+	}
+
+	r = sp_set_stopbits(port, 1);
+	if (r != SP_OK) {
+		fprintf(stderr, "sp_set_stopbits failed: %s\n", sp_last_error_message());
+		return r;
+	}
+
+	r = sp_set_flowcontrol(port, SP_FLOWCONTROL_NONE);
+	if (r != SP_OK) {
+		fprintf(stderr, "sp_set_flowcontrol failed: %s\n", sp_last_error_message());
+		return r;
+	}
 
 	return SP_OK;
 }

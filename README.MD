@@ -93,6 +93,17 @@ mingw32-make
 
 ---
 
+### Linux Serial Port Permissions
+
+On Linux systems (Armbian, Debian, Ubuntu, etc.), accessing `/dev/ttyUSB*`
+or `/dev/ttyACM*` often requires being in the **dialout** group.
+If you see: sp_open failed: Permission denied
+Fix it by adding your user to the dialout group:
+
+```bash
+sudo usermod -aG dialout $USER
+```
+
 ## Usage
 ```sh
 Usage: ./seftool -p <port> [-b <baudrate>] -a <action>

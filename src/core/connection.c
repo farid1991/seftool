@@ -91,7 +91,7 @@ int wait_for_handshake(struct sp_port *port, struct phone_info *phone)
 			if (c == '3') // Ericsson 6XX reply with '3'
 			{
 				printf("\nConnected\n");
-				printf("\nDetected Ericsson 6XX\n");
+				printf("\nDetected Ericsson 6XX/7XX\n");
 				phone->type = ERICSSON_6XX;
 				phone->chipset = PHONE_Z80;
 				return SP_OK; // success
