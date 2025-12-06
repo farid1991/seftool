@@ -631,7 +631,10 @@ int flash_detect_fw_version(struct sp_port *port, struct phone_info *phone)
 
 		return flash_scan_fw_version(port, phone, 0x447C0000, 4 * BLOCK_SIZE);
 	} else if (phone->chip_id == DB2020) {
-		return flash_scan_fw_version(port, phone, 0x45B00000, 16 * BLOCK_SIZE);
+		if (flash_scan_fw_version(port, phone, 0x45A00000, 16 * BLOCK_SIZE) == 0)
+			return FLASH_OK;
+		if (flash_scan_fw_version(port, phone, 0x45B00000, 16 * BLOCK_SIZE) == 0)
+			return FLASH_OK;
 	}
 
 	printf("Unsupported chip id: %08X\n", phone->chip_id);
