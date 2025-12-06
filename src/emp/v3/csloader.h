@@ -19,9 +19,9 @@ typedef struct ose_stat_t {
 	int16_t st_uid; /* user ID of owner */
 	int16_t st_gid; /* group ID of owner */
 	uint32_t st_size; /* total size, in bytes */
-	uint32_t st_atime; /* time of last access */
-	uint32_t st_mtime; /* time of last modification */
-	uint32_t st_ctime; /* time of last status change */
+	uint32_t st_accesstime; /* time of last access */
+	uint32_t st_modifytime; /* time of last modification */
+	uint32_t st_changetime; /* time of last status change */
 } ose_stat_t;
 
 typedef struct {

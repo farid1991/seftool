@@ -12,6 +12,7 @@
 #define RMDIR(path) _rmdir(path)
 #define PATHSEP '\\'
 #else
+#include <sys/stat.h>
 #include <unistd.h>
 #define MKDIR(path) mkdir(path, 0755)
 #define RMDIR(path) rmdir(path)
