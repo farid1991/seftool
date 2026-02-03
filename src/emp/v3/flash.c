@@ -616,7 +616,7 @@ int flash_detect_fw_version(struct sp_port *port, struct phone_info *phone)
 
 		return flash_scan_fw_version(port, phone, 0x213FC000, BLOCK_SIZE); // Z310
 	} else if (phone->chip_id == DB2000) {
-		if (flash_scan_fw_version(port, phone, 0x21A00000, 4 * BLOCK_SIZE) == 0) // W900
+		if (flash_scan_fw_version(port, phone, 0x21A00000, 8 * BLOCK_SIZE) == 0) // W900
 			return FLASH_OK;
 
 		return flash_scan_fw_version(port, phone, 0x21400000,

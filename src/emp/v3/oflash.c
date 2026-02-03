@@ -350,7 +350,7 @@ int loader_send_ofs_ldr_db2000(struct sp_port *port, struct phone_info *phone)
 	case 49:
 		if (loader_send_qhldr(port, phone, DB2000_PILOADER_RED_CID00_R2B) != 0)
 			return -1;
-		if (loader_send_binary(port, phone, DB2000_CSLOADER_RED_CID49_P4L) != 0)
+		if (loader_send_binary(port, phone, DB2000_CSLOADER_RED_CID49_P4K) != 0)
 			return -1;
 		return 0;
 
